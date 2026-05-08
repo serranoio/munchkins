@@ -1,0 +1,24 @@
+{
+  "name": "@serranolabs.io/munchkins",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "munchkins": "./src/cli/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "docs"
+  ],
+  "scripts": {
+    "cli": "bun run src/cli/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  }
+}

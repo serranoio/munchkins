@@ -1,0 +1,10 @@
+{
+  "name": "sandbox-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "true",
+    "typecheck": "true"
+  }
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "Home"
+  },
+  {
+    "type": "dir",
+    "name": "internal",
+    "label": "Internal (dev only)"
+  }
+]

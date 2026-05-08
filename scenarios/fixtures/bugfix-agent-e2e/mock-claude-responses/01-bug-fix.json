@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Bug identified in src/math.ts. Replaced subtraction with addition. (mock response)",
+  "durationMs": 0
+}

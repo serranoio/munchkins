@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["typecheck"],
+      "outputs": ["dist/**", "doc_build/**"],
+      "env": ["PUBLIC_DOCS"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": ["PUBLIC_DOCS"]
+    },
+    "typecheck": {
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["typecheck"],
+      "outputs": []
+    }
+  }
+}
