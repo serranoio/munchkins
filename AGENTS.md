@@ -19,10 +19,9 @@ The plan-funnel artifacts that produced this scaffold live under `docs/pages/int
 
 1. **Bun only.** Never `npm install`, never `pnpm install`. Always `bun install`. Always `bun run <script>`.
 2. **Workspace package names are scoped to `@serranolabs.io/`.** The agents-derived package is `@serranolabs.io/munchkins`. Cross-package imports go through the package name, never relative paths across workspace boundaries.
-3. **Scenario harness owns exactly one scenario.** S7 (`bugfix-agent-e2e`) is the single deep scenario. Other PRD scenarios are verified outside the harness — see `docs/pages/internal/scenario-testing-strategy.md`.
-4. **The munchkins package does not depend on the harness.** The harness imports `@serranolabs.io/munchkins` and installs Claude mocks at the `spawnClaude` seam. No `scenario_id`, `run_id`, or harness-only identifier may flow into the production CLI surface.
-5. **Public docs builds (`PUBLIC_DOCS=true`) must filter `docs/pages/internal/**` out of the build output.** The env-gated `route.exclude` in `rspress.config.ts` is the single mechanism. Do not bypass it.
-6. **Never invoke real `claude` from inside the scenario harness.** The `spawnClaude` mock + `Bun.spawn` audit guard enforce this. A real-claude invocation fails the scenario regardless of pipeline outcome.
+3. **The munchkins package does not depend on the harness.** The harness imports `@serranolabs.io/munchkins` and installs Claude mocks at the `spawnClaude` seam. No `scenario_id`, `run_id`, or harness-only identifier may flow into the production CLI surface.
+4. **Public docs builds (`PUBLIC_DOCS=true`) must filter `docs/pages/internal/**` out of the build output.** The env-gated `route.exclude` in `rspress.config.ts` is the single mechanism. Do not bypass it.
+5. **Never invoke real `claude` from inside the scenario harness.** The `spawnClaude` mock + `Bun.spawn` audit guard enforce this. A real-claude invocation fails the scenario regardless of pipeline outcome.
 
 ## Workflow conventions
 

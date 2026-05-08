@@ -1,5 +1,5 @@
 {
-  "name": "@serranolabs.io/munchkins",
+  "name": "@serranolabs.io/munchkins-core",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -8,17 +8,18 @@
     "access": "public"
   },
   "files": [
-    "src",
-    "agents"
+    "src"
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts"
+    "./builder": "./src/builder/index.ts",
+    "./builder/spawn-claude.ts": "./src/builder/spawn-claude.ts",
+    "./registry": "./src/registry/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@serranolabs.io/munchkins-core": "workspace:*"
+    "commander": "^12.0.0"
   }
 }

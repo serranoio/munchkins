@@ -370,4 +370,214 @@ After both agents converge, Slices 7 and 8 become eligible:
 - **Don't bundle slice work.** Each slice is committed independently with verification output in the commit message (PRD scenario IDs the slice satisfies + scenario-result JSON for harness scenarios).
 - **`init-project` invocation in Slice 7 is downstream of plan-funnel.** The plan-funnel itself ends here — at confirming this plan. Implementation is handed off via `initialize-work` and `build-feature` per the plan-funnel skill's contract.
 - **Manual-verification recording.** Until plan locks a mechanism, record manual-pass/fail outcomes in the slice's commit message body or PR description. A `scenarios/manual-log.md` file is acceptable but not required for the scaffold milestone.
-- **D4 carve-out is exactly one line.** `program.name("agents")` → `program.name("munchkins")` in `packages/munchkins/src/cli/index.ts`. Any other source-content change to the moved package files in Slice 2 is a scope creep — flag and stop.
+- **D4 carve-out is exactly one line.** `program.name("agents")` → `program.name("munchkins")` in `packages/munchkins/src/cli/index.ts`. Any other source-content change to the moved package files in Slice 2 is a scope creep — flag and stop. **(Note: D4 retired in change-impact round 1 per D10. This rule applied to the scaffold milestone only.)**
+
+---
+
+## Change-Impact Round 1 — Plan Review Findings (post-scaffold refactor)
+
+Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above) is already implemented. This section adds Slices 9–13 to deliver the package split + AgentRegistry + bugfix relocation. Earlier slices are left as historical record; their "Current status: missing" descriptions are obsolete relative to today's repo state but accurate for the moment they were authored.
+
+### Decisions reopened (with confirmation recorded)
+
+| Original | Amended by | Reason |
+|----------|------------|--------|
+| D2 (workspace count = 2) | D7 (count = 3: `-core`, bundle, `docs/`) | Framework needs to be installable independently of defaults. |
+| D4 ("verbatim copy + single-line carve-out") | D10 (source restructure permitted) | Scaffold milestone is done; deliberate restructure is the new work. |
+| D5 (CLI subcommands `agent`/`workflow`/`autonomous`/`changelog`) | D9 (no `bin` field, no global binary) | Subcommand list dissolves; CLI surface is registry-derived in consumer-owned bin scripts. |
+| PRD §"Constructed bugfix agent — location and surface" | D8 (`packages/munchkins/agents/bugfix/`) | Boundary clarity: example, not framework. |
+| T1 mock seam path | D13 (`@serranolabs.io/munchkins-core/builder/spawn-claude.ts`) | Framework files relocate to `-core`. |
+| T5 publish step | T5 amended (publish two packages topologically) | Two-package split. |
+| T11 publishConfig | T11 amended (both packages) | Two-package split. |
+
+### Slice 9 — Create `packages/munchkins-core` + relocate framework files
+
+**Delivers:** the `-core` package as the framework boundary. No PRD scenario fully verified by this slice alone; foundation for S13 (Slice 10) and S14 (Slice 11).
+
+**Files to create:**
+- `packages/munchkins-core/package.json` — `name: "@serranolabs.io/munchkins-core"`, `version: "0.1.0"` (or whatever the current bundle version is — match), `publishConfig.access: "public"`, `exports: { ".": "./src/index.ts", "./builder/spawn-claude.ts": "./src/builder/spawn-claude.ts", "./builder": "./src/builder/index.ts", "./registry": "./src/registry/index.ts" }`, devDependencies as needed (`@types/bun`, `typescript`), runtime deps (`commander` — moved from bundle).
+- `packages/munchkins-core/tsconfig.json` — `extends: "../../tsconfig.json"`, `include: ["src/**/*"]`.
+
+**Files to MOVE (from `packages/munchkins/src/` → `packages/munchkins-core/src/`):**
+- `builder/agent-builder.ts`
+- `builder/prompt.ts`
+- `builder/spawn-claude.ts`
+- `builder/index.ts` (exports adjusted — no longer re-exports `createBugfixAgent`/`BugfixAgentOptions`)
+- `worktree.ts`
+- `spawn.ts`
+- `changelog.ts`
+
+`packages/munchkins-core/src/index.ts` re-exports `AgentBuilder`, `RunResult`, `Prompt`, `spawnClaude`, `cleanupWorktree`, `createWorktree`, `deleteBranch`, `listWorktrees`, `WorktreeInfo`, `worktreeExists`, plus the new registry exports added in Slice 10.
+
+**Files to DELETE (in `packages/munchkins/`):**
+- `src/builder/agent-builder.ts`, `src/builder/prompt.ts`, `src/builder/spawn-claude.ts`, `src/worktree.ts`, `src/spawn.ts`, `src/changelog.ts` (now in `-core`).
+
+**Workspace + root config updates:**
+- Root `package.json` — workspaces stay `["packages/*", "docs"]` (already glob-matches the new workspace).
+- `biome.json` includes already cover `packages/`.
+
+**Completion:**
+- `bun install` succeeds; `packages/munchkins-core/node_modules/` resolves; bundle's `package.json` (after Slice 11) declares `@serranolabs.io/munchkins-core: "workspace:*"`.
+- `bun run typecheck` passes (turbo runs `tsc --noEmit` per workspace).
+- `bun run lint` passes.
+
+### Slice 10 — `AgentRegistry` + `AgentBuilder(name, description?)` + `Prompt.withUserMessage()/.withUserMessageFromOption()` in `-core`
+
+**Delivers:** S13 (registering an agent automatically exposes a CLI subcommand with typed flags).
+
+**Files to create:**
+- `packages/munchkins-core/src/registry/registry.ts` — `OptionSchema` (no `env` field), `AgentRegistry` class, exported `registry` singleton (per T13). The registry stores `Map<string, AgentBuilder>`. Methods: `register(builder)`, `replace(builder)`, `list()`, `get(name)`, `cli()`.
+- `packages/munchkins-core/src/registry/cli.ts` — internal `buildCli(registry: AgentRegistry): Command` helper. Walks registered builders, emits Commander program: `.command(builder.name).description(builder.description ?? "")`, then per-option `.requiredOption()` / `.option()` based on schema. Action handler writes each parsed flag to `process.env['__MUNCHKINS_OPT_' + flag]` (private channel), skipping `undefined` values, then calls `await builder.run()`. Map type strings → Commander flag forms (`string` → `--name <value>`, `boolean` → `--name`, `number` → `--name <n>` with `parseFloat`, `string[]` → repeated `--name <v>`).
+- `packages/munchkins-core/src/registry/index.ts` — re-exports `AgentRegistry`, `OptionSchema`, `registry`.
+
+**Files to edit:**
+- `packages/munchkins-core/src/builder/agent-builder.ts` — change the constructor signature from `(name = "builder")` to `(name: string, description?: string)`. Add public readonly fields `name`, `description`, `options` (a `Map<string, OptionSchema>`) — plain fields, no `get` accessors. Add residual public `option(name, schema): this` for declaring options NOT consumed by prompts. Edit `.add(prompt): this` to extract option declarations from the prompt's fragments (any `withUserMessageFromOption(name, schema)` with a schema arg auto-declares the option as `type: "string"`). **`.run()` signature is unchanged** — pipeline-execution behavior is untouched.
+- `packages/munchkins-core/src/builder/prompt.ts` — rename `withText(text)` → `withUserMessage(text)`. Drop `withInput(path)` (eager file reads now use `withUserMessage(readFileSync(...))`). Add `withUserMessageFromOption(optionName: string, schema?: { required?: boolean; description: string; default?: string }): this` + new `Fragment` kind `"input-from-option"` carrying `optionName` + `schema?`. Add a public getter for the fragments array so `AgentBuilder.add()` can read it. `Prompt.resolve()` gains one branch that reads `process.env['__MUNCHKINS_OPT_' + optionName]` as a path at run-time and returns the file contents.
+- `packages/munchkins-core/src/index.ts` — export `AgentRegistry`, `OptionSchema`, `registry`. Re-export `Prompt` (carrying the new + renamed methods).
+
+**Completion (S13 verification):**
+- New runtime smoke test (added to a `bun test` file under `packages/munchkins-core/`): construct a builder with `.add(new Prompt("...").withUserMessageFromOption("userMessage", { required: true, description: "x" }))`, register it, call `registry.cli().parseAsync(['node', 'bin', 'agent-name', '--help'])` (or use Commander's `helpInformation()`). Assert output contains `--user-message <user-message>` and the description.
+- A second assertion: `registry.cli().parseAsync(['node', 'bin', 'agent-name'])` (missing required flag) prints a Commander error and exits non-zero.
+- `bun run typecheck` + `bun run lint` pass.
+
+### Slice 11 — Relocate bugfix agent to `packages/munchkins/agents/bugfix/` + remove CLI wrapper
+
+**Delivers:** S14 (consumer installs the bundle, default bugfix agent registers itself). Updates S1 (CLI surface is registry-derived).
+
+**Files to create:**
+- `packages/munchkins/agents/bugfix/bugfix-agent.ts` — constructs the bugfix builder directly via `AgentBuilder` (no factory function needed; per the Option Y design, the builder declares its own description + options via inline chained methods, and the registry just consumes the builder). Imports `AgentBuilder`, `Prompt`, `registry` from `@serranolabs.io/munchkins-core`. Resolves prompt files from `packages/munchkins/agents/bugfix/prompts/`. Module body:
+
+  ```ts
+  import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins-core";
+  import { dirname, join } from "node:path";
+  import { fileURLToPath } from "node:url";
+
+  const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
+
+  const builder = new AgentBuilder(
+    "bug-fix",
+    "Fix a bug described in a markdown user-message file.",
+  )
+    .add(
+      new Prompt(join(PROMPTS, "bug-fix.md")).withUserMessageFromOption("userMessage", {
+        required: true,
+        description: "Path to a markdown file describing the bug",
+      }),
+    )
+    .add(
+      new Prompt(join(PROMPTS, "refactorer.md")).withUserMessage(
+        "Refactor only files touched by the previous step. Do not expand scope.",
+      ),
+    )
+    .addDeterministic(["bun run lint", "bun run typecheck"], {
+      loop: { maxIterations: 3, fixer: new Prompt(join(PROMPTS, "deterministic-fixer.md")) },
+    })
+    .finalize([], {
+      onPass: ['git merge --no-ff "$BRANCH"', 'git branch -D "$BRANCH"', 'git worktree remove "$WORKTREE"'],
+      onFail: ['echo "bug-fix pipeline failed: $FAILURE_REASON"', 'echo "branch $BRANCH preserved at $WORKTREE for manual inspection"'],
+    });
+
+  registry.register(builder);
+  ```
+
+  Note: the legacy `createBugfixAgent({ focus })` factory function is dropped. The builder is constructed directly inline; the option declaration lives on the prompt that consumes it. Consumers who need a customized variant construct their own `AgentBuilder` and call `registry.replace(customBuilder)` to override the default.
+
+- `packages/munchkins/agents/bugfix/prompts/bug-fix.md`, `refactorer.md`, `deterministic-fixer.md` — MOVE from `packages/munchkins/docs/subagents/*.md`. Content unchanged.
+
+**Files to edit:**
+- `packages/munchkins/package.json` — add `dependencies: { "@serranolabs.io/munchkins-core": "workspace:*" }`, update `exports` map: `{ ".": "./src/index.ts", "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts" }`, add `files: ["src", "agents"]`. **REMOVE the `bin` field** if present (per D9).
+- `packages/munchkins/src/index.ts` — replace contents with:
+
+  ```ts
+  export * from "@serranolabs.io/munchkins-core";
+  import "../agents/bugfix/bugfix-agent.js"; // side-effect: registers default bugfix agent
+  ```
+
+**Files to DELETE:**
+- `packages/munchkins/src/builder/bugfix-agent.ts` (moved to `agents/bugfix/`).
+- `packages/munchkins/src/builder/index.ts` (re-exports now flow through `-core`; bundle's `src/index.ts` re-exports `*` from core).
+- `packages/munchkins/src/cli/bugfix.ts` (CLI wrapper removed per D9).
+- `packages/munchkins/src/cli/agent.ts`, `workflow.ts`, `autonomous.ts`, `changelog.ts` (inherited subcommand wrappers; per D9 the CLI surface is registry-derived).
+- `packages/munchkins/src/cli/index.ts` (the hand-built Commander program is gone; if a sample bin is wanted, it lands at `bin/munchkins.ts` per T15, NOT inside the bundle).
+- `packages/munchkins/docs/subagents/*.md` (prompts moved to `agents/bugfix/prompts/`).
+- `packages/munchkins/docs/` directory if empty after the prompts move.
+
+**Files to create at repo root (T15 — optional documentation surface):**
+- `bin/munchkins.ts` — the sample bin script (NOT a published surface; referenced from `AGENTS.md`).
+
+**Completion (S14 verification):**
+- Smoke test in `ci.yml` or a dedicated `bun test` file: `import { registry } from "@serranolabs.io/munchkins-core"; await import("@serranolabs.io/munchkins"); assert(registry.list().includes("bug-fix"));`. Exits 0.
+- `bun run --cwd packages/munchkins -- node -e 'console.log(...)'` smoke confirming the bundle entry point side-effect-registers without throwing.
+- `bun run typecheck` + `bun run lint` pass.
+- **Updated S1 verification:** `bun run bin/munchkins.ts --help` exits 0 and lists `bug-fix` (or whatever name is registered) as a subcommand. `bun run bin/munchkins.ts bug-fix --help` exits 0 and lists `--user-message <user-message>` (Commander kebab-cases the camelCase option name).
+
+### Slice 12 — Update scenario harness for new paths
+
+**Delivers:** keeps S7 (`bugfix-agent-e2e`) green after Slices 9–11 land.
+
+**Files to edit:**
+- `scenarios/index.ts` — update the `mock.module(...)` absolute path target from `packages/munchkins/src/builder/spawn-claude.ts` to `packages/munchkins-core/src/builder/spawn-claude.ts` (T1 amended). Update the env-var name from `FOCUS_PATH` to `USER_MESSAGE_PATH` (the new agent reads via `withUserMessageFromOption("USER_MESSAGE_PATH")`). Switch the dynamic-import target from `@serranolabs.io/munchkins` (which currently exports `createBugfixAgent`) to a bundle side-effect import + `registry.get("bug-fix")?.builder.run()` lookup. The harness no longer constructs the builder; it just sets the env var, imports the bundle (which auto-registers), and invokes the pre-registered builder.
+- `scenarios/lib/sandbox.ts` — no FOCUS_PATH reference today (sandbox just sets git env). The env var is set in `scenarios/index.ts` before the dynamic bundle import; that ordering is preserved (env vars are read by `Prompt.resolve()` at step-execution time, after the import + registration phase, so write-before-import is not strictly required, but it's still clearer to write it before the import).
+- `scenarios/fixtures/bugfix-agent-e2e/seed-repo/` — if the seed repo expects prompt files at `docs/subagents/*.md`, update to expect them at `agents/bugfix/prompts/*.md` (matching the bundle's published structure). The seed repo is a synthetic standalone — its prompts are LOCAL to the sandbox, not imported from the bundle, so this change is purely fixture path housekeeping. Rename `bug.md` (current focus file) to remain `bug.md` (filename unchanged; the env-var name is what changed, not the file name itself).
+
+**Completion (S7 verification — same as before):**
+- `bun run scenario` exits 0.
+- Mock-call audit reports zero real `claude` invocations.
+- Sandbox cleaned up on success.
+
+### Slice 13 — Workflow + AGENTS.md + version-bump updates
+
+**Delivers:** keeps S6, S10, S11, S12 green after the package split lands.
+
+**Files to edit:**
+- `.github/workflows/publish.yml` — split the publish step into two `bun publish` invocations in topological order (T5 amended):
+
+  ```yaml
+  - run: bun publish --cwd packages/munchkins-core
+  - run: bun publish --cwd packages/munchkins
+  ```
+
+  Tag trigger remains `tags: ['v*']` (T3 unchanged).
+- `.github/workflows/ci.yml` — add the S13/S14 smoke assertions to the `test` job (or a sibling `smoke` job).
+- `AGENTS.md` — replace the "Munchkins CLI" section with:
+  - **Library API** — describes `@serranolabs.io/munchkins-core` exports (`AgentBuilder`, `AgentRegistry`, `registry`, `Prompt`, `spawnClaude`) and `@serranolabs.io/munchkins` (re-exports `-core` + side-effect-registers default agents).
+  - **No published binary** — explicit statement per D9, with a pointer to `bin/munchkins.ts` for the sample bin script.
+  - **Version-bump procedure** — bump BOTH `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions in lockstep, AND update the bundle's `dependencies["@serranolabs.io/munchkins-core"]` to match the new version, commit, tag, push.
+- `AGENTS.md` "Where things live" table — update entries for moved files.
+- `AGENTS.md` "Command registry" table — REMOVE the `bugfix --focus <path>` munchkins-CLI subcommand row entirely (per D9, no `bugfix` CLI subcommand exists post-refactor — the registry-derived CLI is constructed by consumers from a project-local bin script, not shipped). Other rows unchanged.
+
+**Completion:**
+- `AGENTS.md` `grep -F "@insider-trading/agents"` returns no matches (already true post-scaffold, re-asserted).
+- `AGENTS.md` `grep -F "@serranolabs.io/munchkins-core"` returns ≥1 match (S6 strengthened).
+- `AGENTS.md` `grep -F "bin/munchkins.ts"` returns ≥1 match (sample bin documented).
+- A dry-run of `publish.yml` against a test tag (manual S12 verification — operator pushes `v0.0.0-alpha.1` after the refactor lands) publishes both packages successfully and a sandbox `bun add @serranolabs.io/munchkins@0.0.0-alpha.1` resolves both deps.
+
+### Slice Order And Dependencies (round 1)
+
+```
+Slice 9 (create -core, move framework files)
+  └──► Slice 10 (AgentRegistry + AgentBuilder(name, description?) + withUserMessageFromOption())
+         └──► Slice 11 (relocate bugfix; remove CLI wrappers; bundle deps -core)
+                └──► Slice 12 (harness import paths)
+                       └──► Slice 13 (workflows + AGENTS.md)
+```
+
+- Slice 9 is the foundation; nothing else can start.
+- Slice 10 needs Slice 9's `-core` package to exist.
+- Slice 11 needs Slice 10's registry to exist (it registers the bugfix agent).
+- Slice 12 needs Slice 11's relocation to be in place (otherwise import paths fail).
+- Slice 13 needs Slices 11+12 (workflow ordering depends on the package split being complete).
+
+**Linear order:** `9 → 10 → 11 → 12 → 13`. No parallel splits are productive at this size — each slice's edits affect files the next slice's edits also touch.
+
+### Risks (round 1)
+
+R1. **`workspace:*` resolution at publish time.** If `bun publish` doesn't rewrite `workspace:*` to a concrete version in the published `package.json`, downstream consumers can't resolve the bundle's dep. **Mitigation:** verify in Slice 13 by inspecting the published tarball locally with `bun pm pack --cwd packages/munchkins` and checking the rewritten `package.json` before pushing the real tag. Bun >=1.1.30 supports this; T10 already pins.
+
+R2. **Side-effect import order.** `import "@serranolabs.io/munchkins"` triggers registration as a side effect. If a consumer (or the harness) imports the bugfix agent module BEFORE importing the registry singleton, the registry singleton may be created twice (one per import order) and registration goes to the wrong instance. **Mitigation:** the registry is exported from `-core` and is a true module-level singleton; both `-core/src/index.ts` and `bundle/src/index.ts` re-export the same singleton. Slice 10's tests assert that two import paths return the same registry object (`Object.is`).
+
+R3. **CLI flag name collision.** Two registered agents declaring the same option name don't collide directly (they're scoped per-subcommand by Commander), but if a consumer registers an agent with the same NAME as a default agent, the second registration overwrites the first silently. **Mitigation:** `registry.register()` throws on duplicate name unless explicitly called via `registry.replace(name, builder)`. Slice 10 enforces.
+
+R4. **Sample bin script confusion.** Checking in `bin/munchkins.ts` while saying "no published bin" is mildly confusing. **Mitigation:** the file's first line is a comment "// SAMPLE — not published. See AGENTS.md for context." `package.json` `files` field for both packages MUST exclude `bin/`.
+
+R5. **`packages/munchkins/docs/` deletion.** The bundle's `docs/subagents/` directory (current home of prompt files) is removed in Slice 11. If anything else references that path (e.g., `init-project` output, ARGS.md, the current `bugfix.ts` CLI wrapper which is also being removed), follow-up edits are needed. **Mitigation:** Slice 11's pre-edit grep across the repo for `docs/subagents/` to surface stragglers.

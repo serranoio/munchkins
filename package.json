@@ -24,6 +24,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@serranolabs.io/munchkins": "workspace:*",
+    "@serranolabs.io/munchkins-core": "workspace:*",
     "@types/bun": "^1.3.0",
     "turbo": "^2.5.2",
     "typescript": "^5.4.0"

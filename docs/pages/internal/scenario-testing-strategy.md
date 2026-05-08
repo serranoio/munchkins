@@ -9,11 +9,11 @@ upstream:
 
 # Scenario Testing Strategy
 
-This strategy assumes `prd.md` (12 scenarios S1–S12) and `diagnosis.md` (D1–D6, post-rename to `@serranolabs.io/munchkins`). It does not restate them.
+This strategy assumes `prd.md` (14 scenarios — S1–S12 from the original scaffold milestone, S13–S14 added in change-impact round 1) and `diagnosis.md` (D1–D13). It does not restate them.
 
 ## Scenario Mapping
 
-The harness owns **exactly one** scenario: S7. This is an explicit exception to the skill's default unified-harness rule, set by the PRD's Testing Decisions. The other 11 scenarios are verified outside the harness per the methods the PRD already lists; they are not invoked by the harness CLI.
+The harness owns **exactly one** deep scenario: S7. This is an explicit exception to the skill's default unified-harness rule, set by the PRD's Testing Decisions. The other scenarios are verified outside the harness per the methods the PRD already lists; they are not invoked by the harness CLI.
 
 | PRD ID | E2E ID | In Harness? | Verification |
 |--------|--------|-------------|--------------|
@@ -21,6 +21,7 @@ The harness owns **exactly one** scenario: S7. This is an explicit exception to 
 | S1, S3, S4, S5, S6 | — | ✗ | Direct shell, asserted in `ci.yml` `test` job |
 | S2, S8 | — | ✗ | Manual (browser) |
 | S9, S10, S11, S12 | — | ✗ | Real GitHub Actions run |
+| S13, S14 | — | ✗ | Direct shell — runtime smoke test in `ci.yml` `test` job, asserting `registry.cli().parse(['bugfix','--help'])` exits 0 and `registry.list()` includes `bugfix` after a side-effect bundle import |
 
 ## Harness CLI Contract
 
@@ -30,9 +31,9 @@ bun run scenario        # runs bugfix-agent-e2e; exit 0 pass / 1 fail
 
 Wired via root `package.json` `"scenario": "bun run scenarios/index.ts"`. No `list`, no `run <id>`, no mode dispatcher. Surface grows only when a second deep-simulation scenario is added by a future PRD.
 
-**Behavior on invocation:** create temp sandbox → init git repo from seed fixture → install in-process Claude mock seam → install sandbox-local stubs for deterministic-loop commands → import bugfix-agent constructor from `@serranolabs.io/munchkins` → invoke against sandbox → assert outcomes + run mock-call audit → emit structured JSON result + summary line → on pass remove sandbox, on fail preserve and print path.
+**Behavior on invocation:** create temp sandbox → init git repo from seed fixture → install in-process Claude mock seam at `@serranolabs.io/munchkins-core/builder/spawn-claude.ts` (per D13/T1) → install sandbox-local stubs for deterministic-loop commands → import bugfix-agent constructor from `@serranolabs.io/munchkins/agents/bugfix` (per D8 — relocated post-refactor) → invoke against sandbox → assert outcomes + run mock-call audit → emit structured JSON result + summary line → on pass remove sandbox, on fail preserve and print path.
 
-**Boundary:** harness imports a normal package export. The munchkins package does not depend on the harness, does not accept `scenario_id`/`run_id`/harness-only inputs, does not know the harness exists.
+**Boundary:** harness imports normal package exports. Neither munchkins-core nor the bundle depends on the harness, accepts `scenario_id`/`run_id`/harness-only inputs, or knows the harness exists.
 
 ## Scenario Placement
 
@@ -59,7 +60,7 @@ Only the harness scenario has one. Per run:
 - Fresh temp dir under `os.tmpdir()`.
 - Real git repo initialized there, seeded from `fixtures/bugfix-agent-e2e/seed-repo/`. Seed includes a synthetic `package.json` whose `lint`/`typecheck`/`scenario:all`/`append-changelog` scripts point at `lib/stub-deterministic.ts`.
 - Fresh in-process module-mock of `spawnClaude` via the mechanism locked in `technology-decisions.md`.
-- Env vars `WORKTREE`, `BRANCH`, `REPO_ROOT`, `FOCUS_PATH`, `AGENT_NAME` set per `AgentBuilder` expectations, pointing into the sandbox.
+- Env vars `WORKTREE`, `BRANCH`, `REPO_ROOT`, `USER_MESSAGE_PATH`, `AGENT_NAME` set per `AgentBuilder` expectations, pointing into the sandbox. (`USER_MESSAGE_PATH` replaces the original `FOCUS_PATH` per the change-impact-round-1 rename of `focus` → `userMessage`.)
 
 Real git binary, real Bun, real filesystem (sandboxed). Mocked Claude only.
 
@@ -136,13 +137,13 @@ Required by plan-funnel skill rules for browser/operator-driven scenarios. Each 
 - **Forbidden:** `test` job runs without invoking `bun run scenario`; `bugfix-agent-e2e` passes despite deliberate failure; ANY real `claude` invocation in the job log.
 - **Inspect:** `test` job log; structured JSON result printed at end; branch protection settings (verify `test` is required).
 
-### S12 — Tag triggers npm publish
+### S12 — Tag triggers npm publish (amended — change-impact round 1)
 
-- **Run:** with `NPM_TOKEN` repo secret configured for `@serranolabs.io` scope, bump `packages/munchkins/package.json` version to `0.0.0-alpha.0`, commit, push, then tag and push per pattern locked in `technology-decisions.md`.
-- **Open:** GitHub Actions `publish` run; npm registry (`https://www.npmjs.com/package/@serranolabs.io/munchkins` or `npm view @serranolabs.io/munchkins versions --json`).
-- **Expected:** lint+test gating jobs run first; on green, publish step runs `bun publish`/`npm publish`; new version on registry within ~1min; `npm i -g @serranolabs.io/munchkins@<version>` exposes a `munchkins` command on PATH whose `--help` prints the four subcommands with `munchkins` as program name.
-- **Forbidden:** publish runs despite gating-job red; published `name` wrong; `bin` field missing (no `munchkins` on PATH after global install); tarball includes `node_modules`/`bun.lock`/unwanted files.
-- **Inspect:** publish workflow run log; npm registry page; local `npm i -g` + `munchkins --help` round-trip.
+- **Run:** with `NPM_TOKEN` repo secret configured for `@serranolabs.io` scope, bump **both** `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions to `0.0.0-alpha.0` (and update the bundle's `dependencies["@serranolabs.io/munchkins-core"]` to match), commit, push, then tag and push per pattern locked in `technology-decisions.md`.
+- **Open:** GitHub Actions `publish` run; npm registry pages for both `@serranolabs.io/munchkins-core` and `@serranolabs.io/munchkins`.
+- **Expected:** lint+test gating jobs run first; on green, publish step runs `bun publish` for `-core` first, then for the bundle (topological order — bundle's dep on `-core` requires `-core` to be on the registry first); new versions on both registry pages within ~1min; `npm i @serranolabs.io/munchkins@<version>` in a sandbox project resolves both packages, and `import { registry } from "@serranolabs.io/munchkins-core"; await import("@serranolabs.io/munchkins"); registry.cli().parse(['bug-fix','--help'])` exits 0 with the expected `--user-message` flag listed.
+- **Forbidden:** publish runs despite gating-job red; published `name` wrong on either package; **`bin` field PRESENT on either package** (per D9 — neither package ships a binary); tarball includes `node_modules`/`bun.lock`/unwanted files; bundle published before `-core`; `import "@serranolabs.io/munchkins"` fails to register the default bugfix agent.
+- **Inspect:** publish workflow run log (verify topological order); both npm registry pages; sandbox-project import smoke test result.
 
 ## Completion Gate
 

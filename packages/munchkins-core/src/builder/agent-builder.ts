@@ -13,6 +13,13 @@ const C = {
   reset: "\x1b[0m",
 } as const;
 
+export interface OptionSchema {
+  type: "string" | "boolean" | "number" | "string[]";
+  required?: boolean;
+  description: string;
+  default?: string | boolean | number | string[];
+}
+
 type AgentStep = { kind: "agent"; prompt: Prompt };
 type DeterministicStep = {
   kind: "deterministic";
@@ -35,15 +42,37 @@ export interface RunResult {
 }
 
 export class AgentBuilder {
-  private steps: Step[] = [];
-  private agentName: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly options = new Map<string, OptionSchema>();
 
-  constructor(agentName = "builder") {
-    this.agentName = agentName;
+  private steps: Step[] = [];
+
+  constructor(name: string, description?: string) {
+    this.name = name;
+    this.description = description;
+  }
+
+  option(name: string, schema: OptionSchema): this {
+    if (this.options.has(name)) {
+      throw new Error(`Option "${name}" already declared on agent "${this.name}"`);
+    }
+    this.options.set(name, schema);
+    return this;
   }
 
   add(prompt: Prompt): this {
     this.steps.push({ kind: "agent", prompt });
+    for (const f of prompt.fragments) {
+      if (f.kind !== "input-from-option" || !f.declaration) continue;
+      if (this.options.has(f.optionName)) continue;
+      this.options.set(f.optionName, {
+        type: "string",
+        required: f.declaration.required ?? false,
+        description: f.declaration.description,
+        default: f.declaration.default,
+      });
+    }
     return this;
   }
 
@@ -73,7 +102,7 @@ export class AgentBuilder {
 
   async run(): Promise<RunResult> {
     const repoRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
-    const { path: worktreePath, branch } = await createWorktree(this.agentName);
+    const { path: worktreePath, branch } = await createWorktree(this.name);
     const env = {
       ...process.env,
       WORKTREE: worktreePath,
@@ -81,7 +110,7 @@ export class AgentBuilder {
       REPO_ROOT: repoRoot,
     };
 
-    banner("agent", `AgentBuilder.run() — ${this.agentName}`);
+    banner("agent", `AgentBuilder.run() — ${this.name}`);
     console.log(`${C.dim}worktree:  ${worktreePath}${C.reset}`);
     console.log(`${C.dim}branch:    ${branch}${C.reset}`);
     console.log(`${C.dim}steps:     ${this.steps.length}${C.reset}`);
@@ -171,7 +200,7 @@ export class AgentBuilder {
       }
       if (allPassed) return;
       if (step.loop && i < max) {
-        const fixer = step.loop.fixer.withText(
+        const fixer = step.loop.fixer.withUserMessage(
           `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(-4000)}`,
         );
         const { systemPrompt, userPrompt } = fixer.resolve(repoRoot);

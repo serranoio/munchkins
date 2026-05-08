@@ -23,7 +23,7 @@ const spawnClaudeAbsPath = join(
   harnessDir,
   "..",
   "packages",
-  "munchkins",
+  "munchkins-core",
   "src",
   "builder",
   "spawn-claude.ts",
@@ -46,18 +46,33 @@ async function run(): Promise<ScenarioResult> {
     sandboxPath = sandbox.path;
     cleanup = sandbox.cleanup;
 
-    const focusPath = join(sandbox.path, "bug.md");
-    process.env.FOCUS_PATH = focusPath;
-    process.env.AGENT_NAME = "bug-fix";
+    const userMessagePath = join(sandbox.path, "bug.md");
+    process.env.__MUNCHKINS_OPT_userMessage = userMessagePath;
     process.chdir(sandbox.path);
 
-    const { createBugfixAgent } = await import("@serranolabs.io/munchkins");
+    // Side-effect import: bundle's index.ts registers the default bug-fix agent
+    // with the core registry. Order matters — mock.module above must run first.
+    await import("@serranolabs.io/munchkins");
+    const { registry } = await import("@serranolabs.io/munchkins-core");
 
-    const builder = createBugfixAgent({
-      focus: focusPath,
-      finalize: { onPass: [], onFail: [] },
-    });
-    const agentResult = await builder.run();
+    const agent = registry.get("bug-fix");
+    if (!agent) {
+      return {
+        scenarioId: SCENARIO_ID,
+        result: "fail",
+        durationMs: Date.now() - start,
+        sandboxPath,
+        mockCallLog: getMockCallLog(),
+        failure: {
+          phase: "setup",
+          message:
+            'registry.get("bug-fix") returned undefined — bundle import did not register the agent',
+        },
+        harnessVersion: HARNESS_VERSION,
+      };
+    }
+
+    const agentResult = await agent.run();
 
     if (!agentResult.succeeded) {
       return {

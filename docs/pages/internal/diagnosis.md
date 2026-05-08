@@ -190,6 +190,47 @@ Reason: plan-funnel is designed to hand off to `init-project`. All six init-proj
 
 ---
 
+## Resolved decisions (Change-impact round 1 — package split + AgentRegistry)
+
+These supersede or amend D1–D6 where noted. Triggered by a user-driven post-scaffold refactor: extract the bugfix agent out of the framework, introduce an `AgentRegistry` that auto-generates CLI surfaces from registered agents, remove the standalone `bugfix.ts` CLI wrapper, and split the package into a framework core and a defaults bundle. All five plan-funnel artifacts are amended in place; original D1–D6 entries are preserved above for traceability.
+
+### D7 — Package split (amends D2)
+**Two publishable workspaces under `packages/`:** `@serranolabs.io/munchkins-core` (framework) and `@serranolabs.io/munchkins` (defaults bundle that depends on `-core`). `docs/` remains the third workspace. Workspace count: **3** (was 2 per D2).
+
+Reason: the refactor needs framework code (`AgentBuilder`, `AgentRegistry`, `Prompt`, `spawnClaude`, `worktree`) to be installable independently of any default agents, while still letting consumers `bun add @serranolabs.io/munchkins` to get sane defaults. D2's minimal-scope discipline is preserved by capping the split at exactly two `packages/*` workspaces with the bundle depending on the framework.
+
+### D8 — Bugfix-agent location (amends PRD §"Constructed bugfix agent — location and surface")
+**`packages/munchkins/agents/bugfix/{bugfix-agent.ts, prompts/{bug-fix.md, refactorer.md, deterministic-fixer.md}}`.** Outside any `src/` directory, co-located with its prompts, scoped to the bundle package.
+
+Reason: the bugfix agent is an example/default constructed *with* the framework, not part of the framework. Living outside `src/` makes that boundary visually obvious. Co-locating the prompts with the agent file removes the `docs/subagents/...` indirection. The bundle package's `src/` (if it exists at all) only houses re-exports + registration glue; the bundle's interesting code is under `agents/`.
+
+### D9 — No CLI binary (amends D5)
+**Neither `@serranolabs.io/munchkins-core` nor `@serranolabs.io/munchkins` ships a `bin` field.** There is no installed `munchkins` command on PATH after `npm i -g @serranolabs.io/munchkins`. Consumers invoke programmatically: import `AgentRegistry` from `-core`, import default agents from the bundle (which auto-register), call `registry.cli().parse(process.argv)` from a project-local bin script if a CLI is desired.
+
+Reason: the user-driven design explicitly rejected a published binary. The default-agents bundle is a *library* shipping a registry-aware default set; downstream projects build their own CLIs from that. This dissolves D5's CLI subcommand list (`agent`, `workflow`, `autonomous`, `changelog`) — those were CLI fixtures of the inherited package and have no role in the new design unless re-introduced as registered agents.
+
+### D10 — Source restructure permitted (amends D4)
+**The "verbatim copy + single carve-out" rule from D4 is retired.** Source files in the moved package are reorganized as needed: `agent-builder.ts`, `prompt.ts`, `spawn-claude.ts`, `worktree.ts`, `spawn.ts`, `changelog.ts` move into `packages/munchkins-core/src/`. The inherited `cli/` directory (with its `agent.ts`, `workflow.ts`, `autonomous.ts`, `changelog.ts`, `bugfix.ts` subcommand wrappers) is removed. The `bugfix-agent.ts` constructor relocates to `packages/munchkins/agents/bugfix/` per D8.
+
+Reason: D4 was a discipline rule for the scaffold milestone (move fast, don't refactor in flight). With the scaffold complete, deliberate restructuring is the point of the new work, not scope creep.
+
+### D11 — AgentRegistry lives in `-core`
+**`AgentRegistry` is a `@serranolabs.io/munchkins-core` export.** Default agents in the bundle import the registry from `-core` and call `registry.register(agentBuilder)` at module load. Consumers use the same registry instance for their own agents.
+
+Reason: the registry is framework infrastructure — its presence in `-core` keeps "framework + my own agents" a viable consumer path without dragging in the defaults bundle.
+
+### D12 — Schema-driven CLI flag derivation
+**`AgentBuilder` (in `-core`) declares its configurable inputs as a plain TypeScript object literal** — e.g. `{ userMessage: { type: 'string', required: true, description: '...' } }` — via an `.option(name, schema)` method called inline in the builder chain. `AgentRegistry.cli()` walks all registered builders, generates a Commander `Command` per builder, and renders each schema entry as a `--flag` (kebab-cased: `userMessage` → `--user-message`). No Zod, no JSON-schema sidecar, no TypeScript reflection.
+
+Reason: schema-driven keeps a single source of truth (the agent file itself) and avoids a runtime dependency for a small set of well-typed primitives (`string`, `boolean`, `number`, `string[]`).
+
+### D13 — Mock seam stays in `-core`
+**`spawn-claude.ts` lives in `packages/munchkins-core/src/builder/`.** The harness's `mock.module()` path becomes `@serranolabs.io/munchkins-core/builder/spawn-claude.ts` — T1's chosen mechanism survives the rename; only the import specifier changes.
+
+Reason: Claude invocation is framework infrastructure. Keeping it in `-core` keeps the mock seam trivially reachable for any consumer who builds their own agents on `-core` directly.
+
+---
+
 ## Carry-forward into Stage 3 (PRD)
 
 The PRD must:
