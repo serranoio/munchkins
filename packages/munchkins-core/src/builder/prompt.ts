@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 export interface OptionDeclaration {
@@ -14,11 +14,16 @@ export type Fragment =
 const OPTION_ENV_PREFIX = "__MUNCHKINS_OPT_";
 
 export class Prompt {
-  private systemPath?: string;
+  private systemPaths: string[] = [];
   private _fragments: Fragment[] = [];
 
   constructor(systemPath?: string) {
-    this.systemPath = systemPath;
+    if (systemPath !== undefined) this.systemPaths.push(systemPath);
+  }
+
+  withSystem(path: string): this {
+    this.systemPaths.push(path);
+    return this;
   }
 
   withUserMessage(text: string): this {
@@ -37,17 +42,21 @@ export class Prompt {
 
   resolve(repoRoot: string): { systemPrompt: string; userPrompt: string } {
     const abs = (p: string) => (isAbsolute(p) ? p : join(repoRoot, p));
-    const systemPrompt = this.systemPath ? readFileSync(abs(this.systemPath), "utf-8") : "";
+    const systemPrompt = this.systemPaths.map((p) => readFileSync(abs(p), "utf-8")).join("\n\n");
     const userPrompt = this._fragments
       .map((f) => {
         if (f.kind === "text") return f.text;
-        const path = process.env[`${OPTION_ENV_PREFIX}${f.optionName}`];
-        if (!path) {
+        const value = process.env[`${OPTION_ENV_PREFIX}${f.optionName}`];
+        if (!value) {
           throw new Error(
             `Prompt: option "${f.optionName}" not provided (env var ${OPTION_ENV_PREFIX}${f.optionName} not set)`,
           );
         }
-        return readFileSync(abs(path), "utf-8");
+        const candidate = abs(value);
+        if (existsSync(candidate)) {
+          return readFileSync(candidate, "utf-8");
+        }
+        return value;
       })
       .join("\n\n");
     return { systemPrompt, userPrompt };

@@ -13,7 +13,8 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts"
+    "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts",
+    "./agents/refactor": "./agents/refactor/refactor-agent.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

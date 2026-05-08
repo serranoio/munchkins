@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "lint": "true",
-    "typecheck": "true"
+    "typecheck": "true",
+    "scenario": "true"
   }
 }
