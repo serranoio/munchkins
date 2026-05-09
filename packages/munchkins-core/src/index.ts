@@ -21,8 +21,11 @@ export { AgentRegistry, registry } from "./registry/index.js";
 export { RunLog, type RunSummary } from "./run-log.js";
 export {
   gitWorktreeSandbox,
+  type IntegrateContext,
   type SandboxFactory,
   type SandboxHandle,
+  type TeardownContext,
+  type TeardownResult,
 } from "./sandbox/index.js";
 export {
   cleanupWorktree,

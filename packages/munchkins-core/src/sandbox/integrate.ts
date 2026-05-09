@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import type { AgentCLI } from "./agent-cli.js";
+import type { AgentCLI } from "../builder/agent-cli.js";
 
 const MERGE_FIXER_SYSTEM_PROMPT = `You are a merge conflict resolver running inside a git rebase.
 

@@ -1,1 +1,8 @@
-export { gitWorktreeSandbox, type SandboxFactory, type SandboxHandle } from "./sandbox.js";
+export {
+  gitWorktreeSandbox,
+  type IntegrateContext,
+  type SandboxFactory,
+  type SandboxHandle,
+  type TeardownContext,
+  type TeardownResult,
+} from "./sandbox.js";

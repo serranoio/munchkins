@@ -3,8 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
+import { AgentCLI, type SpawnOptions, type SpawnResult } from "../builder/agent-cli.js";
 import { renameBranch } from "../worktree.js";
 import { gitWorktreeSandbox } from "./sandbox.js";
+
+// Used only by the teardown-integrates test; the merge-fixer should not be
+// invoked when the rebase has no conflicts, so spawn() throwing is the assertion.
+class FailIfSpawnedCLI extends AgentCLI {
+  readonly name = "claude" as const;
+  spawn(_opts: SpawnOptions): Promise<SpawnResult> {
+    throw new Error("merge-fixer must not be spawned for a clean rebase");
+  }
+}
 
 interface Repo {
   path: string;
@@ -72,10 +82,11 @@ describe("gitWorktreeSandbox", () => {
 
     await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
 
-    // Integration (rebase + ff-merge) is the caller's job. teardown cleans up only.
+    // Without an integrate ctx the caller is still responsible for merging.
     await $`git merge --ff-only ${handle.env.BRANCH}`.cwd(repo.path).env(gitEnv()).quiet();
 
-    await handle.teardown("pass");
+    const result = await handle.teardown("pass");
+    expect(result.ok).toBe(true);
 
     const wtList = (await $`git worktree list --porcelain`.cwd(repo.path).quiet()).text();
     expect(wtList).not.toContain(".worktrees/");
@@ -85,6 +96,30 @@ describe("gitWorktreeSandbox", () => {
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("agent commit");
+  });
+
+  test("teardown integrates on pass when ctx.integrate is supplied", async () => {
+    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
+
+    const result = await handle.teardown("pass", {
+      integrate: {
+        originalGoal: "fix the bug",
+        postFixChecks: [],
+        cli: new FailIfSpawnedCLI(),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+
+    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
+    expect(log).toContain("agent commit");
+
+    const wtList = (await $`git worktree list --porcelain`.cwd(repo.path).quiet()).text();
+    expect(wtList).not.toContain(handle.cwd);
+
+    const branches = (await $`git branch --list 'agent/*'`.cwd(repo.path).quiet()).text().trim();
+    expect(branches).toBe("");
   });
 
   test("dirty worktree on pass throws and does not silently merge or leak", async () => {
@@ -192,7 +227,11 @@ describe("gitWorktreeSandbox", () => {
 });
 
 async function handle_safe_teardown(
-  h: { cwd: string; env: Record<string, string>; teardown: (o: "pass" | "fail") => Promise<void> },
+  h: {
+    cwd: string;
+    env: Record<string, string>;
+    teardown: (o: "pass" | "fail") => Promise<{ ok: boolean }>;
+  },
   repoRoot: string,
 ): Promise<void> {
   try {

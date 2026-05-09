@@ -2,10 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { RunLog } from "../run-log.js";
-import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
+import type { IntegrateContext, SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
 import { renameBranch } from "../worktree.js";
 import { AgentCLI } from "./agent-cli.js";
-import { integrateWorktree } from "./integrate.js";
 import { Prompt } from "./prompt.js";
 import { deriveSlugDeterministic, getSlugWithRetry, type SlugResult } from "./slug.js";
 import { spawnClaude } from "./spawn-claude.js";
@@ -240,55 +239,44 @@ export class AgentBuilder {
       }
     }
 
-    // Prepend the changelog inside the worktree and commit it on the agent branch
-    // BEFORE integration — the rebase then carries the changelog atomically with
-    // the rest of the run's commits. For non-sandboxed runs the file is written
-    // but left uncommitted.
-    if (!failureReason && commitMessage) {
-      const changelogPath = runLog.prependChangelogIn(cwd);
-      if (changelogPath && sandboxHandle) {
-        await $`git add ${changelogPath}`.cwd(cwd).quiet();
-        await $`git commit -m ${`docs(changelog): ${commitMessage}`}`.cwd(cwd).quiet();
-      }
-    }
-
-    // Integrate the agent's branch onto the parent branch via rebase + ff-merge.
-    // Conflicts are handed to a merge-fixer loop. On unresolved conflicts the
-    // worktree is left preserved (sandboxHandle.teardown sees outcome="fail").
-    if (!failureReason && commitMessage && sandboxHandle) {
-      const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
-        .text()
-        .trim();
-      const postFixChecks = collectPostFixChecks(this.steps);
-      const result = await integrateWorktree({
-        worktreePath: sandboxHandle.cwd,
-        branch: sandboxHandle.env.BRANCH,
-        repoRoot,
-        baseBranch,
-        originalGoal: userMessageText ?? "",
-        cli: AgentCLI.fromEnv(),
-        postFixChecks,
-        onFixerInvocation: (info) =>
-          runLog.fixerInvocation(
-            this.steps.length,
-            info.iter,
-            info.systemPrompt,
-            info.userPrompt,
-            info.response,
-            info.exitCode,
-            info.durationMs,
-          ),
-        log: (line) => {
-          if (verbose) console.log(`${C.dim}${line}${C.reset}`);
-          else process.stdout.write(`[${this.name}] ${line}\n`);
-        },
+    // Hand integration off to the sandbox via teardown. Integration is the
+    // default for any sandboxed, non-failed run — agents without a summary
+    // writer still get their commits rebased and ff-merged onto the parent.
+    // teardown resolves conflicts via the merge-fixer loop and preserves the
+    // worktree on failure; a failed integration flips the run's outcome to
+    // "fail" here so the on-fail commands and run-log reflect reality.
+    if (sandboxHandle) {
+      const integrateCtx: IntegrateContext | undefined = !failureReason
+        ? {
+            originalGoal: userMessageText ?? "",
+            postFixChecks: collectPostFixChecks(this.steps),
+            cli: AgentCLI.fromEnv(),
+            onFixerInvocation: (info) =>
+              runLog.fixerInvocation(
+                this.steps.length,
+                info.iter,
+                info.systemPrompt,
+                info.userPrompt,
+                info.response,
+                info.exitCode,
+                info.durationMs,
+              ),
+            log: (line) => {
+              if (verbose) console.log(`${C.dim}${line}${C.reset}`);
+              else process.stdout.write(`[${this.name}] ${line}\n`);
+            },
+          }
+        : undefined;
+      const initialOutcome = failureReason ? "fail" : "pass";
+      const teardownResult = await sandboxHandle.teardown(initialOutcome, {
+        failureReason,
+        integrate: integrateCtx,
       });
-      if (!result.ok) {
-        failureReason = result.reason;
+      if (!teardownResult.ok) {
+        failureReason = teardownResult.reason;
       }
     }
 
-    const outcome = failureReason ? "fail" : "pass";
     const totalDurationS = ((Date.now() - runStart) / 1000).toFixed(1);
 
     if (!failureReason) {
@@ -340,10 +328,6 @@ export class AgentBuilder {
           process.stderr.write(`  branch: ${sandboxHandle.env.BRANCH ?? ""}\n`);
         }
       }
-    }
-
-    if (sandboxHandle) {
-      await sandboxHandle.teardown(outcome, { failureReason });
     }
 
     const worktreePath = sandboxHandle?.cwd ?? "";
@@ -444,6 +428,15 @@ export class AgentBuilder {
     }
 
     runLog.setAgentSummary(parsed.commitMessage, parsed.markdown);
+
+    // Prepend the changelog inside the worktree and commit it on the agent
+    // branch so the rebase carries it atomically with the rest of the run's
+    // commits. For non-sandboxed runs the file is written but left uncommitted.
+    const changelogPath = runLog.prependChangelogIn(cwd);
+    if (changelogPath && sandboxHandle) {
+      await $`git add ${changelogPath}`.cwd(cwd).quiet();
+      await $`git commit -m ${`docs(changelog): ${parsed.commitMessage}`}`.cwd(cwd).quiet();
+    }
 
     return { commitMessage: parsed.commitMessage };
   }
