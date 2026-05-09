@@ -97,4 +97,51 @@ describe("RunLog", () => {
       expect(JSON.parse(lines[1])).toEqual({ type: "custom", n: 1 });
     });
   });
+
+  describe("prependChangelogIn", () => {
+    test("renders cost as — when any contribution lacked costUsd (Codex backend)", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        // costUsd intentionally omitted (Codex backend)
+      });
+      log.setAgentSummary("feat: do a thing", "Did a thing.");
+
+      const changelogPath = log.prependChangelogIn(tmpRepo);
+      expect(changelogPath).toBeDefined();
+
+      const text = readFileSync(changelogPath as string, "utf-8");
+      expect(text).toContain("## feat: do a thing");
+      // The cost field appears in the metadata line, e.g. "... · 0.0s · —"
+      expect(text).toMatch(/· —\*\*/);
+      expect(text).not.toMatch(/\$\d+\.\d+/);
+    });
+
+    test("renders cost as $X.XXXX when all contributions provided costUsd", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.0125,
+      });
+      log.setAgentSummary("feat: another thing", "Body.");
+
+      const changelogPath = log.prependChangelogIn(tmpRepo);
+      expect(changelogPath).toBeDefined();
+
+      const text = readFileSync(changelogPath as string, "utf-8");
+      expect(text).toContain("$0.0125");
+      expect(text).not.toMatch(/· —\*\*/);
+    });
+
+    test("returns undefined when setAgentSummary was never called", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      expect(log.prependChangelogIn(tmpRepo)).toBeUndefined();
+    });
+  });
 });
