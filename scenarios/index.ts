@@ -105,7 +105,7 @@ async function assertHappyPathCleanup(repoRoot: string): Promise<string | undefi
  * Assert that run-log artifacts were written into artifactDir by the framework.
  *
  * Expected layout (relative to artifactDir):
- *   bug-fix-<ts>-<uuid>/          ← exactly one subdir matching "bug-fix-*"
+ *   <slug>-<uuid>/                ← exactly one subdir; <slug> comes from getSlugOutput()
  *     summary.json                ← parseable; agent === "bug-fix"
  *     events.jsonl                ← non-empty
  *     step-01-agent.system.md
