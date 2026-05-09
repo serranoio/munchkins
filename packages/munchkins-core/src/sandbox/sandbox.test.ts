@@ -61,7 +61,7 @@ describe("gitWorktreeSandbox", () => {
     repo.cleanup();
   });
 
-  test("happy path: creates worktree, merges agent commit, removes worktree", async () => {
+  test("happy path: creates worktree and tears down cleanup-only on pass", async () => {
     const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
 
     expect(isAbsolute(handle.cwd)).toBe(true);
@@ -72,6 +72,9 @@ describe("gitWorktreeSandbox", () => {
 
     await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
 
+    // Integration (rebase + ff-merge) is the caller's job. teardown cleans up only.
+    await $`git merge --ff-only ${handle.env.BRANCH}`.cwd(repo.path).env(gitEnv()).quiet();
+
     await handle.teardown("pass");
 
     const wtList = (await $`git worktree list --porcelain`.cwd(repo.path).quiet()).text();
@@ -79,9 +82,6 @@ describe("gitWorktreeSandbox", () => {
 
     const branches = (await $`git branch --list 'agent/*'`.cwd(repo.path).quiet()).text().trim();
     expect(branches).toBe("");
-
-    const fileExists = await Bun.file(join(repo.path, "fix.ts")).exists();
-    expect(fileExists).toBe(true);
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("agent commit");
@@ -127,6 +127,7 @@ describe("gitWorktreeSandbox", () => {
     expect(isAbsolute(handle.cwd)).toBe(true);
 
     await commit(handle.cwd, "fix.ts", "x\n", "fix");
+    await $`git merge --ff-only ${handle.env.BRANCH}`.cwd(repo.path).env(gitEnv()).quiet();
     await handle.teardown("pass");
 
     const wtList = (await $`git worktree list --porcelain`.cwd(repo.path).quiet()).text();
@@ -138,17 +139,17 @@ describe("gitWorktreeSandbox", () => {
     try {
       const handle = await gitWorktreeSandbox()("bug-fix", masterRepo.path);
       await commit(handle.cwd, "fix.ts", "x\n", "fix");
+      await $`git merge --ff-only ${handle.env.BRANCH}`.cwd(masterRepo.path).env(gitEnv()).quiet();
       await handle.teardown("pass");
 
       const log = (await $`git log --oneline master`.cwd(masterRepo.path).quiet()).text();
       expect(log).toContain("fix");
-      expect(log).toContain("Merge");
     } finally {
       masterRepo.cleanup();
     }
   });
 
-  test("renameBranch updates env.BRANCH so teardown merges and deletes the renamed branch", async () => {
+  test("renameBranch updates env.BRANCH so teardown deletes the renamed branch", async () => {
     const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
     const originalBranch = handle.env.BRANCH;
     const slugBranch = "agent/fix-login-redirect-bug-deadbeef";
@@ -159,6 +160,7 @@ describe("gitWorktreeSandbox", () => {
     expect(handle.env.BRANCH).toBe(slugBranch);
 
     await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
+    await $`git merge --ff-only ${slugBranch}`.cwd(repo.path).env(gitEnv()).quiet();
     await handle.teardown("pass");
 
     const branches = (await $`git branch --list 'agent/*'`.cwd(repo.path).quiet()).text().trim();
@@ -166,7 +168,6 @@ describe("gitWorktreeSandbox", () => {
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("agent commit");
-    expect(log).toContain(slugBranch);
   });
 
   test("concurrent sandboxes do not collide", async () => {

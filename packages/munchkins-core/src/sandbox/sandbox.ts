@@ -5,10 +5,10 @@ export interface SandboxHandle {
   cwd: string;
   env: Record<string, string>;
   diff?: () => Promise<string>;
-  teardown(
-    outcome: "pass" | "fail",
-    ctx?: { commitMessage?: string; failureReason?: string },
-  ): Promise<void>;
+  // Integration (rebase + ff-merge) is performed by the caller before teardown.
+  // teardown is responsible for cleanup only: on "pass" it removes the worktree
+  // and the agent branch; on "fail" it preserves both for the operator.
+  teardown(outcome: "pass" | "fail", ctx?: { failureReason?: string }): Promise<void>;
 }
 
 export type SandboxFactory = (agentName: string, repoRoot: string) => Promise<SandboxHandle>;
@@ -34,8 +34,9 @@ export function gitWorktreeSandbox(): SandboxFactory {
             `worktree ${path} has uncommitted changes; agent must commit before teardown:\n${status}`,
           );
         }
-        const msg = ctx?.commitMessage ?? `Merge ${currentBranch}`;
-        await $`git merge --no-ff -m ${msg} ${currentBranch}`.cwd(repoRoot).quiet();
+        // Integration (rebase + ff-merge into the parent branch) happens before
+        // teardown is called — this method only cleans up the worktree dir and
+        // the agent branch once the work has been integrated.
         await cleanupWorktree(path, repoRoot);
         await deleteBranch(currentBranch, repoRoot);
       },
