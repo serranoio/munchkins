@@ -226,6 +226,20 @@ export class AgentBuilder {
     return { worktreePath, branch, succeeded: false, failureReason };
   }
 
+  private async invokeClaude(
+    systemPrompt: string,
+    userPrompt: string,
+    cwd: string,
+    runLog: RunLog,
+  ): Promise<{ output: string; exitCode: number; durationMs: number }> {
+    printInvocation(systemPrompt, userPrompt);
+    const startTime = Date.now();
+    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: true });
+    const durationMs = Date.now() - startTime;
+    runLog.accumulateUsage(r.usage);
+    return { output: r.output, exitCode: r.exitCode, durationMs };
+  }
+
   private async runSummaryWriter(
     sandboxHandle: SandboxHandle,
     cwd: string,
@@ -269,14 +283,8 @@ export class AgentBuilder {
     const { systemPrompt } = resolved;
 
     banner("agent", "Summary writer phase");
-    printInvocation(systemPrompt, userPrompt);
-
-    const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: true });
-    const durationMs = Date.now() - startTime;
-
-    runLog.accumulateUsage(r.usage);
-    runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
+    const r = await this.invokeClaude(systemPrompt, userPrompt, cwd, runLog);
+    runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, r.durationMs);
 
     // Parse the last JSON object containing commitMessage from the output
     const jsonMatch = r.output.match(/\{[\s\S]*"commitMessage"[\s\S]*\}\s*$/);
@@ -376,12 +384,8 @@ export class AgentBuilder {
     stepIndex: number,
   ): Promise<void> {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
-    printInvocation(systemPrompt, userPrompt);
-    const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: true });
-    const durationMs = Date.now() - startTime;
-    runLog.agentStep(stepIndex, systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
-    runLog.accumulateUsage(r.usage);
+    const r = await this.invokeClaude(systemPrompt, userPrompt, cwd, runLog);
+    runLog.agentStep(stepIndex, systemPrompt, userPrompt, r.output, r.exitCode, r.durationMs);
     if (r.exitCode !== 0) {
       throw new Error(`agent step failed (exit ${r.exitCode})`);
     }
@@ -419,10 +423,7 @@ export class AgentBuilder {
           `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(-4000)}`,
         );
         const { systemPrompt, userPrompt } = fixer.resolve(repoRoot);
-        printInvocation(systemPrompt, userPrompt);
-        const startTime = Date.now();
-        const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: true });
-        const durationMs = Date.now() - startTime;
+        const r = await this.invokeClaude(systemPrompt, userPrompt, cwd, runLog);
         runLog.fixerInvocation(
           stepIndex,
           i,
@@ -430,9 +431,8 @@ export class AgentBuilder {
           userPrompt,
           r.output,
           r.exitCode,
-          durationMs,
+          r.durationMs,
         );
-        runLog.accumulateUsage(r.usage);
       }
     }
     throw new Error(
