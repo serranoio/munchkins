@@ -21,9 +21,9 @@ export {
   type IntegrateOptions,
   type IntegrateResult,
   integrateBranch,
-  rebaseAndResolve,
   type RebaseAndResolveOptions,
   type RebaseAndResolveResult,
+  rebaseAndResolve,
 } from "./integrate.js";
 export { AgentRegistry, registry } from "./registry/index.js";
 export { RunLog, type RunSummary } from "./run-log.js";
