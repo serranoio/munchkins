@@ -185,12 +185,8 @@ describe("runDaemon", () => {
 
   test("with arm:true (default) arms one timer per cronned builder", async () => {
     const reg = new AgentRegistry();
-    reg.register(
-      new AgentBuilder("alpha").cron("0 2 * * *", { userMessage: "a" }),
-    );
-    reg.register(
-      new AgentBuilder("beta").cron("0 3 * * *", { userMessage: "b" }),
-    );
+    reg.register(new AgentBuilder("alpha").cron("0 2 * * *", { userMessage: "a" }));
+    reg.register(new AgentBuilder("beta").cron("0 3 * * *", { userMessage: "b" }));
 
     let timerCalls = 0;
 
