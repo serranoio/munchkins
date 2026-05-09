@@ -2,7 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "types": ["node"]
+    "types": ["@types/bun"]
   },
   "include": ["rspress.config.ts", "pages/**/*.tsx", "pages/**/*.ts"],
   "exclude": ["node_modules", "doc_build"]
