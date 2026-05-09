@@ -3,6 +3,9 @@ export interface SpawnClaudeOptions {
   userPrompt: string;
   cwd: string;
   stream?: boolean;
+  model?: string;
+  disallowedTools?: string[];
+  abortSignal?: AbortSignal;
 }
 
 export interface SpawnClaudeUsage {
@@ -42,6 +45,12 @@ export async function spawnClaude(opts: SpawnClaudeOptions): Promise<SpawnClaude
   if (opts.systemPrompt) {
     args.push("--system-prompt", opts.systemPrompt);
   }
+  if (opts.model) {
+    args.push("--model", opts.model);
+  }
+  if (opts.disallowedTools && opts.disallowedTools.length > 0) {
+    args.push("--disallowedTools", opts.disallowedTools.join(","));
+  }
   args.push("--output-format", "stream-json", "--verbose");
 
   let output = "";
@@ -53,6 +62,7 @@ export async function spawnClaude(opts: SpawnClaudeOptions): Promise<SpawnClaude
       cwd: opts.cwd,
       stdout: "pipe",
       stderr: "inherit",
+      signal: opts.abortSignal,
     });
 
     const decoder = new TextDecoder();

@@ -8,18 +8,31 @@ export interface WorktreeInfo {
   branch: string;
 }
 
-export async function createWorktree(agentName: string, repoRoot: string): Promise<WorktreeInfo> {
+export async function createWorktree(
+  agentName: string,
+  repoRoot: string,
+  branchName?: string,
+): Promise<WorktreeInfo> {
   if (!isAbsolute(repoRoot)) {
     throw new Error(`createWorktree: repoRoot must be absolute, got ${repoRoot}`);
   }
   const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-  const branch = `agent/${agentName}-${suffix}`;
+  const branch = branchName ?? `agent/${agentName}-${suffix}`;
   const path = join(repoRoot, WORKTREE_DIR, `${agentName}-${suffix}`);
 
   await $`mkdir -p ${join(repoRoot, WORKTREE_DIR)}`.quiet();
   await $`git worktree add ${path} -b ${branch}`.cwd(repoRoot).quiet();
 
   return { path, branch };
+}
+
+export async function renameBranch(
+  oldBranch: string,
+  newBranch: string,
+  repoRoot: string,
+): Promise<void> {
+  if (oldBranch === newBranch) return;
+  await $`git branch -m ${oldBranch} ${newBranch}`.cwd(repoRoot).quiet();
 }
 
 export async function cleanupWorktree(worktreePath: string, repoRoot: string): Promise<void> {

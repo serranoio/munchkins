@@ -69,24 +69,30 @@ export class RunLog {
   private commitMessage: string | undefined;
   private markdown: string | undefined;
 
-  constructor(repoRoot: string, agentName: string) {
+  constructor(repoRoot: string, agentName: string, opts?: { slug?: string }) {
     this.agent = agentName;
     this.repoRoot = repoRoot;
     this.startedAt = Date.now();
-    const suffix = `${this.startedAt}-${crypto.randomUUID().slice(0, 8)}`;
+    const uuid = crypto.randomUUID().slice(0, 8);
+    const slug = opts?.slug?.trim();
+    const dirName = slug ? `${slug}-${uuid}` : `${agentName}-${this.startedAt}-${uuid}`;
     const envDir = process.env.MUNCHKINS_RUN_LOG_DIR;
     const baseDir = envDir
       ? isAbsolute(envDir)
         ? envDir
         : join(repoRoot, envDir)
       : join(repoRoot, ".munchkins", "runs");
-    this.dir = join(baseDir, `${agentName}-${suffix}`);
+    this.dir = join(baseDir, dirName);
     mkdirSync(this.dir, { recursive: true });
     this.eventsPath = join(this.dir, "events.jsonl");
   }
 
   private writeEvent(event: Record<string, unknown>): void {
     appendFileSync(this.eventsPath, `${JSON.stringify(event)}\n`);
+  }
+
+  recordEvent(event: Record<string, unknown>): void {
+    this.writeEvent(event);
   }
 
   accumulateUsage(usage: SpawnClaudeUsage | undefined): void {

@@ -29,7 +29,17 @@ export function configureMock(dir: string): void {
   callLog.length = 0;
 }
 
-export async function spawnClaudeMock(opts: { cwd: string }): Promise<SpawnClaudeMockResponse> {
+const SLUG_OUTPUT = "scenario-bug-fix";
+
+export async function spawnClaudeMock(opts: {
+  cwd: string;
+  model?: string;
+  disallowedTools?: string[];
+}): Promise<SpawnClaudeMockResponse> {
+  // Slug-derivation calls are dispatched outside the agent-step fixture queue.
+  if (opts.model === "haiku") {
+    return { exitCode: 0, output: SLUG_OUTPUT, durationMs: 0 };
+  }
   if (nextIndex >= responseFiles.length) {
     throw new Error(
       `mock fixture exhausted: spawnClaude invoked ${nextIndex + 1} times but only ${responseFiles.length} canned responses are available`,
@@ -67,6 +77,10 @@ export function getExpectedMockCallCount(): number {
 
 export function getResponseFileNames(): string[] {
   return [...responseFiles];
+}
+
+export function getSlugOutput(): string {
+  return SLUG_OUTPUT;
 }
 
 export function setupAuditGuard(): void {
