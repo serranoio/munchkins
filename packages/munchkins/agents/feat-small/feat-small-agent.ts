@@ -1,15 +1,15 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
   DEFAULT_CHECKS,
   defaultFixer,
+  getAgentPromptsDir,
   GUIDELINES_PATH,
   REFACTORER_PATH,
   TEST_WRITER_PATH,
 } from "../_shared/presets.js";
 
-const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
+const PROMPTS = getAgentPromptsDir(import.meta.url);
 
 const builder = new AgentBuilder(
   "feat-small",

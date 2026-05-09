@@ -2,7 +2,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Prompt } from "@serranolabs.io/munchkins-core";
 
-const SHARED_PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
+export function getAgentPromptsDir(importUrl: string): string {
+  return join(dirname(fileURLToPath(importUrl)), "prompts");
+}
+
+const SHARED_PROMPTS = getAgentPromptsDir(import.meta.url);
 
 export const GUIDELINES_PATH = join(SHARED_PROMPTS, "agent-guidelines.md");
 export const DETERMINISTIC_FIXER_PATH = join(SHARED_PROMPTS, "deterministic-fixer.md");
