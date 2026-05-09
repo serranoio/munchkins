@@ -4,6 +4,24 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## docs: add README with concise repo intro and usage
+**2026-05-08 21:21 PDT · feat-small · 300.9s · $1.7630**
+
+**Goal:** Add a concise, compelling README with Usage upfront, then push.
+
+**Outcome:** Created a new top-level `README.md` that opens with a one-paragraph pitch, then leads with `Usage` (install + invocation + examples), followed by default agents, backend selection, per-run lifecycle, repo layout, a build-your-own-agent snippet, requirements, and a pointer to `AGENTS.md`. Also tightened `docs/tsconfig.json` to use `@types/bun` instead of `node`.
+
+**New surface:**
+
+- New file: `README.md`
+
+**Lines added:** +87 (across 2 files)
+
+**Files changed:**
+- README.md
+- docs/tsconfig.json
+
+---
 ## feat(core): add switchable agent CLI backend (claude/codex)
 **2026-05-08 20:59 PDT · feat-small · 671.0s · $6.1088**
 
