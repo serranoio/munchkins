@@ -48,9 +48,7 @@ export default defineConfig({
                 { text: "Plan", link: "/internal/plan" },
               ],
             },
-            ...(planNavItems.length > 0
-              ? [{ text: "Plans", items: planNavItems }]
-              : []),
+            ...(planNavItems.length > 0 ? [{ text: "Plans", items: planNavItems }] : []),
           ]),
     ],
   },
