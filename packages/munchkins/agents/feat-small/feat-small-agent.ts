@@ -4,24 +4,24 @@ import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs
 import {
   DEFAULT_CHECKS,
   defaultFixer,
-  defaultSummaryWriter,
   GUIDELINES_PATH,
   REFACTORER_PATH,
+  TEST_WRITER_PATH,
 } from "../_shared/presets.js";
 
 const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
 
 const builder = new AgentBuilder(
-  "bug-fix",
-  "Fix a bug described in a markdown user-message file.",
+  "feat-small",
+  "Implement a new feature described in a markdown user-message file.",
   gitWorktreeSandbox(),
 )
   .add(
     new Prompt(GUIDELINES_PATH)
-      .withSystem(join(PROMPTS, "bug-fix.md"))
+      .withSystem(join(PROMPTS, "feat-small.md"))
       .withUserMessageFromOption("userMessage", {
         required: true,
-        description: "Path to a markdown file describing the bug",
+        description: "Path to a markdown file (or inline text) describing the feature",
       }),
   )
   .add(
@@ -29,10 +29,17 @@ const builder = new AgentBuilder(
       .withSystem(REFACTORER_PATH)
       .withUserMessage("Refactor only files touched by the previous step. Do not expand scope."),
   )
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSystem(TEST_WRITER_PATH)
+      .withUserMessage(
+        "Analyze the diff and add minimal tests for any new public surface. Skip if there is nothing new to test.",
+      ),
+  )
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },
   })
-  .summaryWriter(defaultSummaryWriter());
+  .summaryWriter(new Prompt(GUIDELINES_PATH).withSystem(join(PROMPTS, "summary-writer.md")));
 
 registry.register(builder);
 

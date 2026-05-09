@@ -14,6 +14,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts",
+    "./agents/feat-small": "./agents/feat-small/feat-small-agent.ts",
     "./agents/refactor": "./agents/refactor/refactor-agent.ts"
   },
   "scripts": {

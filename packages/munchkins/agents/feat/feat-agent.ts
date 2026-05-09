@@ -6,27 +6,27 @@ import {
   defaultFixer,
   defaultSummaryWriter,
   GUIDELINES_PATH,
-  REFACTORER_PATH,
 } from "../_shared/presets.js";
 
 const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
+const BUGFIX_PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "..", "bugfix", "prompts");
 
 const builder = new AgentBuilder(
-  "bug-fix",
-  "Fix a bug described in a markdown user-message file.",
+  "feat",
+  "Implement a new feature described in a markdown user-message file.",
   gitWorktreeSandbox(),
 )
   .add(
     new Prompt(GUIDELINES_PATH)
-      .withSystem(join(PROMPTS, "bug-fix.md"))
+      .withSystem(join(PROMPTS, "feat.md"))
       .withUserMessageFromOption("userMessage", {
         required: true,
-        description: "Path to a markdown file describing the bug",
+        description: "Path to a markdown file (or inline text) describing the feature",
       }),
   )
   .add(
     new Prompt(GUIDELINES_PATH)
-      .withSystem(REFACTORER_PATH)
+      .withSystem(join(BUGFIX_PROMPTS, "refactorer.md"))
       .withUserMessage("Refactor only files touched by the previous step. Do not expand scope."),
   )
   .addDeterministic([...DEFAULT_CHECKS], {

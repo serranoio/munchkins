@@ -98,6 +98,18 @@ export class RunLog {
     this.costUsd += usage.costUsd;
   }
 
+  getCostUsd(): number {
+    return this.costUsd;
+  }
+
+  getTokensIn(): number {
+    return this.tokensIn;
+  }
+
+  getTokensOut(): number {
+    return this.tokensOut;
+  }
+
   setAgentSummary(commitMessage: string, markdown: string): void {
     this.commitMessage = commitMessage;
     this.markdown = markdown;

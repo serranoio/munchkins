@@ -1,5 +1,6 @@
 export * from "@serranolabs.io/munchkins-core";
 import "../agents/bugfix/bugfix-agent.js";
+import "../agents/feat-small/feat-small-agent.js";
 import "../agents/refactor/refactor-agent.js";
 
 if (import.meta.main) {
