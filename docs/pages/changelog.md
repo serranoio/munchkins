@@ -4,6 +4,49 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(scheduler): add cron support for AgentBuilder + daemon subcommand
+**2026-05-09 15:25 PDT · feat-small · 642.2s · $6.0585**
+
+**Goal:** Add per-agent cron scheduling via a new `.cron()` builder method and a `bun run munchkins daemon` entrypoint that arms timers per cronned builder and fires `builder.run()` at each tick.
+
+**Outcome:** `AgentBuilder` now carries an optional `CronConfig` set via `.cron(spec, { userMessage, verbosity })` and exposed via `getCron()`; calling `.cron()` twice throws naming the agent. A new `scheduler/daemon.ts` module collects cronned builders from a registry, renders a column-aligned startup table with ISO + humanized next-tick offsets via `cron-parser`, and arms one `setTimeout` per builder that resets per-tick env (`__MUNCHKINS_OPT_verbose` / `__MUNCHKINS_OPT_thinking` / `__MUNCHKINS_OPT_userMessage`) before each run, re-arming in `finally`. The `munchkins` entrypoint branches on `process.argv[2] === "daemon"` to invoke `runDaemon()` ahead of `registry.cli()`. No default agent is cronned; the API ships dormant.
+
+**New surface:**
+
+- Export: `AgentBuilder.prototype.cron(spec, opts)` (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `AgentBuilder.prototype.getCron()` (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: type `Verbosity` (in `packages/munchkins-core/src/builder/agent-builder.ts`, re-exported from `builder/index.ts` and `src/index.ts`)
+- Export: interface `CronConfig` (in `packages/munchkins-core/src/builder/agent-builder.ts`, re-exported from `builder/index.ts` and `src/index.ts`)
+- Export: `runDaemon(opts?)` (in `packages/munchkins-core/src/scheduler/daemon.ts`, re-exported from `scheduler/index.ts` and `src/index.ts`)
+- Export: `applyTickEnv(cfg)` (in `packages/munchkins-core/src/scheduler/daemon.ts`)
+- Export: `collectCronnedBuilders(registry)` (in `packages/munchkins-core/src/scheduler/daemon.ts`)
+- Export: interface `CronnedBuilder` (in `packages/munchkins-core/src/scheduler/daemon.ts`)
+- Export: interface `RunDaemonOptions` (in `packages/munchkins-core/src/scheduler/daemon.ts`)
+- CLI flag: `daemon` subcommand on the `munchkins` entrypoint (registered in `packages/munchkins/src/index.ts` as a pre-`registry.cli()` argv branch)
+- Env var: `__MUNCHKINS_OPT_userMessage` (set per tick by `applyTickEnv`)
+- Env var: `__MUNCHKINS_OPT_verbose` (set per tick when verbosity is `"verbose"`)
+- Env var: `__MUNCHKINS_OPT_thinking` (set per tick when verbosity is `"thinking"`)
+- New file: `packages/munchkins-core/src/scheduler/daemon.ts`
+- New file: `packages/munchkins-core/src/scheduler/index.ts`
+- New file: `packages/munchkins-core/src/scheduler/daemon.test.ts`
+- New package export path: `@serranolabs.io/munchkins-core/scheduler` (added in `packages/munchkins-core/package.json`)
+- Other: `cron-parser@^5.5.0` added as a dependency of `@serranolabs.io/munchkins-core`
+
+**Lines added:** +407 (across 8 files)
+
+**Files changed:**
+- bun.lock
+- packages/munchkins-core/package.json
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/index.ts
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/scheduler/daemon.ts
+- packages/munchkins-core/src/scheduler/index.ts
+- packages/munchkins-core/src/scheduler/daemon.test.ts
+- packages/munchkins/src/index.ts
+
+---
+
 ## docs(summary-writer): forbid markdown headings in changelog body
 **2026-05-09 15:15 PDT · bug-fix · 321.1s · $2.0794**
 
