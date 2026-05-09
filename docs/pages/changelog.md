@@ -4,6 +4,54 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(core): human-readable run names from LLM slug
+**2026-05-08 20:29 PDT · feat-small · 1077.4s · $9.3383**
+
+**Goal:** Replace timestamp-based run-log directory names and worktree branch names with LLM-generated, human-readable slugs derived from the user's task description.
+
+**Outcome:** Added a slug-derivation pipeline (Haiku LLM call with retry + deterministic kebab fallback) that feeds both `RunLog` directory names and worktree branch names. Run dirs are now `<slug>-<uuid8>` and branches are `agent/<slug>-<uuid8>`, with the slug capped at 30 chars. Slug derivation runs in parallel with sandbox creation and the worktree branch is renamed once the slug resolves; fallbacks are recorded as `slug-fallback` events in `events.jsonl`. The scenario harness recognizes the new naming via a Haiku-aware mock branch.
+
+**New surface:**
+
+- Export: `sanitize(raw)` (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `deriveSlugDeterministic(text)` (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `getSlugWithRetry(userMessage, opts?)` (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `SLUG_MAX` constant (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `SlugResult` type (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `SlugFallback` type (in `packages/munchkins-core/src/builder/slug.ts`)
+- Export: `renameBranch(oldBranch, newBranch, repoRoot)` (in `packages/munchkins-core/src/worktree.ts`)
+- Export: `RunLog.recordEvent(event)` public method (in `packages/munchkins-core/src/run-log.ts`)
+- Export: `getSlugOutput()` (in `scenarios/lib/mock-spawn-claude.ts`)
+- Export: New `slug?: string` option on `RunLog` constructor (in `packages/munchkins-core/src/run-log.ts`)
+- Export: New optional `branchName` parameter on `createWorktree` (in `packages/munchkins-core/src/worktree.ts`)
+- Export: New `model`, `disallowedTools`, `abortSignal` fields on `SpawnClaudeOptions` (in `packages/munchkins-core/src/builder/spawn-claude.ts`)
+- New file: `packages/munchkins-core/src/builder/slug.ts`
+- New file: `packages/munchkins-core/src/builder/slug.test.ts`
+- New file: `packages/munchkins-core/src/run-log.test.ts`
+- New file: `packages/munchkins-core/src/worktree.test.ts`
+- Other: New `slug-fallback` event type written to `events.jsonl` (recorded from `agent-builder.ts`)
+- Other: `claude` CLI now invoked with `--model` and `--disallowedTools` flags when those options are set (in `packages/munchkins-core/src/builder/spawn-claude.ts`)
+
+**Lines added:** +362 (across 12 files)
+
+**Files changed:**
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/index.ts
+- packages/munchkins-core/src/builder/slug.ts
+- packages/munchkins-core/src/builder/slug.test.ts
+- packages/munchkins-core/src/builder/spawn-claude.ts
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/run-log.ts
+- packages/munchkins-core/src/run-log.test.ts
+- packages/munchkins-core/src/sandbox/sandbox.ts
+- packages/munchkins-core/src/sandbox/sandbox.test.ts
+- packages/munchkins-core/src/worktree.ts
+- packages/munchkins-core/src/worktree.test.ts
+- scenarios/index.ts
+- scenarios/lib/mock-spawn-claude.ts
+
+---
+
 ## refactor: extract duplicated helpers across builder, run-log, scenarios
 **2026-05-08 20:11 PDT · refactor · 408.3s · $3.3636**
 
