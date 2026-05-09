@@ -4,6 +4,43 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(munchkins/agents): extract getAgentPromptsDir helper
+**2026-05-09 14:12 PDT · refactor · 243.6s · $1.6386**
+
+**Goal:** Eliminate the 4× duplicated `dirname(fileURLToPath(import.meta.url)) + join("prompts")` incantation across `bugfix-agent.ts`, `refactor-agent.ts`, `feat-small-agent.ts`, and `presets.ts` by adding a single `getAgentPromptsDir(importUrl)` helper to `presets.ts`.
+
+**Outcome:** Added `getAgentPromptsDir(importUrl: string)` to `packages/munchkins/agents/_shared/presets.ts` and re-exported it. The shared `SHARED_PROMPTS` constant and all three agent files (`bugfix`, `feat-small`, `refactor`) now call the helper instead of recomputing `dirname(fileURLToPath(import.meta.url))` inline. The `node:url` import was dropped from the three agent files; only `join` is still pulled from `node:path` where needed alongside the helper. The trailing import-order delta in `packages/munchkins-core/src/index.ts` is incidental cleanup from the biome lint pass that ran with this refactor.
+
+**Refactor type:** extraction
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins-core/src/index.ts | 43 | 43 | 0 |
+| packages/munchkins/agents/_shared/presets.ts | 26 | 30 | +4 |
+| packages/munchkins/agents/bugfix/bugfix-agent.ts | 39 | 39 | 0 |
+| packages/munchkins/agents/feat-small/feat-small-agent.ts | 46 | 46 | 0 |
+| packages/munchkins/agents/refactor/refactor-agent.ts | 28 | 32 | +4 |
+
+**Total:** 182 → 190 (Δ +8)
+
+**Files changed:**
+- packages/munchkins-core/src/index.ts
+- packages/munchkins/agents/_shared/presets.ts
+- packages/munchkins/agents/bugfix/bugfix-agent.ts
+- packages/munchkins/agents/feat-small/feat-small-agent.ts
+- packages/munchkins/agents/refactor/refactor-agent.ts
+
+**Call sites now sharing `getAgentPromptsDir`:**
+- `packages/munchkins/agents/_shared/presets.ts` — defines and consumes it for `SHARED_PROMPTS`
+- `packages/munchkins/agents/bugfix/bugfix-agent.ts` — `const PROMPTS = getAgentPromptsDir(import.meta.url)`
+- `packages/munchkins/agents/feat-small/feat-small-agent.ts` — `const PROMPTS = getAgentPromptsDir(import.meta.url)`
+- `packages/munchkins/agents/refactor/refactor-agent.ts` — `const PROMPTS = getAgentPromptsDir(import.meta.url)`
+
+Net line count grew by 8 because the helper is defined once and each agent still needs an import line for it; the win is that the `dirname(fileURLToPath(...))` pattern is no longer repeated and there is now a single place to change how agent prompt directories are resolved.
+
+---
 ## docs: add README with concise repo intro and usage
 **2026-05-08 21:21 PDT · feat-small · 300.9s · $1.7630**
 
