@@ -20,8 +20,36 @@ Output ONLY a single JSON object as the LAST thing in your response. No code fen
 Where:
 
 - `commitMessage` — conventional-commit form. `type` ∈ {fix, feat, refactor, chore, docs, test, perf, build, ci}. Keep under 72 characters.
-- `markdown` — prose. Suggested skeleton (not enforced):
-  - **Goal:** what was the run asked to do (1 sentence)
-  - **Outcome:** what was actually done (2–4 sentences)
-  - **Files changed:** bullet list mirroring the diff exactly
+- `markdown` — prose body of the changelog entry. **The body MUST NOT contain any Markdown headings.** No lines starting with `#`, `##`, `###`, etc. The harness emits the entry's only heading (an H2 derived from `commitMessage`); any heading you add inside the body collides with that title and breaks the document hierarchy. Use **bold inline labels** for the labeled paragraphs instead. Bullet lists, tables, and inline code are fine.
+
+  Required body shape (use these labels verbatim, in this order):
+
+  - `**Goal:**` what the run was asked to do (1 sentence)
+  - `**Outcome:**` what was actually done (2–4 sentences)
+  - `**Files changed:**` followed by a bullet list mirroring the diff exactly
   - Anything else a future reader debugging this run would want — keep it factual; do not editorialize about future work.
+
+  ✓ Correct body:
+
+  ```
+  **Goal:** Fix the foo bug in bar.
+
+  **Outcome:** Replaced X with Y. Added regression test.
+
+  **Files changed:**
+  - packages/x/src/foo.ts
+  - packages/x/src/foo.test.ts
+  ```
+
+  ✗ Wrong body (do NOT do this — the `##` lines collide with the entry's title):
+
+  ```
+  ## Goal
+  Fix the foo bug in bar.
+
+  ## Outcome
+  Replaced X with Y. Added regression test.
+
+  ## Files changed
+  - packages/x/src/foo.ts
+  ```
