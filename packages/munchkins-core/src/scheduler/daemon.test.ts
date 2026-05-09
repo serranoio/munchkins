@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentBuilder } from "../builder/agent-builder.js";
-import { applyTickEnv } from "./daemon.js";
+import { AgentRegistry } from "../registry/registry.js";
+import { applyTickEnv, collectCronnedBuilders, runDaemon } from "./daemon.js";
 
 const ENV_KEYS = [
   "__MUNCHKINS_OPT_verbose",
@@ -83,5 +84,128 @@ describe("applyTickEnv", () => {
     expect(process.env.__MUNCHKINS_OPT_verbose).toBeUndefined();
     expect(process.env.__MUNCHKINS_OPT_thinking).toBe("true");
     expect(process.env.__MUNCHKINS_OPT_userMessage).toBe("second");
+  });
+});
+
+describe("collectCronnedBuilders", () => {
+  test("returns [] when no registered agent is cronned", () => {
+    const reg = new AgentRegistry();
+    reg.register(new AgentBuilder("plain"));
+    expect(collectCronnedBuilders(reg)).toEqual([]);
+  });
+
+  test("filters non-cronned agents and pairs each cronned builder with its cfg", () => {
+    const reg = new AgentRegistry();
+    const cronned = new AgentBuilder("cronned").cron("0 2 * * *", {
+      userMessage: "tick",
+      verbosity: "thinking",
+    });
+    reg.register(new AgentBuilder("plain"));
+    reg.register(cronned);
+
+    const rows = collectCronnedBuilders(reg);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].builder).toBe(cronned);
+    expect(rows[0].cfg).toEqual({
+      spec: "0 2 * * *",
+      userMessage: "tick",
+      verbosity: "thinking",
+    });
+  });
+
+  test("skips registry entries whose get() returns undefined", () => {
+    const stub = {
+      list: () => ["ghost"],
+      get: (_name: string) => undefined,
+    };
+    expect(collectCronnedBuilders(stub)).toEqual([]);
+  });
+});
+
+describe("runDaemon", () => {
+  test("exits 1 and warns when registry has no cronned builders", async () => {
+    const reg = new AgentRegistry();
+    reg.register(new AgentBuilder("plain"));
+
+    const stderrLines: string[] = [];
+    const originalExit = process.exit;
+    (process as { exit: (code?: number) => never }).exit = ((_code?: number) => {
+      throw new Error("__exit__");
+    }) as never;
+
+    try {
+      await runDaemon({
+        registry: reg,
+        stderr: (line) => stderrLines.push(line),
+        stdout: () => {},
+        setTimer: () => 0,
+        arm: false,
+      });
+      throw new Error("runDaemon should have called process.exit");
+    } catch (err) {
+      if ((err as Error).message !== "__exit__") throw err;
+    } finally {
+      process.exit = originalExit;
+    }
+
+    expect(stderrLines.some((l) => /no cronned builders/i.test(l))).toBe(true);
+  });
+
+  test("with arm:false prints startup table and does not arm timers", async () => {
+    const reg = new AgentRegistry();
+    reg.register(
+      new AgentBuilder("alpha").cron("0 2 * * *", {
+        userMessage: "hi",
+        verbosity: "verbose",
+      }),
+    );
+
+    const stdoutLines: string[] = [];
+    let timerCalls = 0;
+
+    await runDaemon({
+      registry: reg,
+      now: () => new Date("2026-01-01T00:00:00Z"),
+      stdout: (line) => stdoutLines.push(line),
+      stderr: () => {},
+      setTimer: () => {
+        timerCalls += 1;
+        return 0;
+      },
+      arm: false,
+    });
+
+    const out = stdoutLines.join("\n");
+    expect(out).toContain("alpha");
+    expect(out).toContain("0 2 * * *");
+    expect(out).toContain("verbose");
+    expect(out).toMatch(/1 cronned builder\(s\) armed/);
+    expect(timerCalls).toBe(0);
+  });
+
+  test("with arm:true (default) arms one timer per cronned builder", async () => {
+    const reg = new AgentRegistry();
+    reg.register(
+      new AgentBuilder("alpha").cron("0 2 * * *", { userMessage: "a" }),
+    );
+    reg.register(
+      new AgentBuilder("beta").cron("0 3 * * *", { userMessage: "b" }),
+    );
+
+    let timerCalls = 0;
+
+    await runDaemon({
+      registry: reg,
+      now: () => new Date("2026-01-01T00:00:00Z"),
+      stdout: () => {},
+      stderr: () => {},
+      // Capture but never invoke the callback so ticks don't fire.
+      setTimer: () => {
+        timerCalls += 1;
+        return 0;
+      },
+    });
+
+    expect(timerCalls).toBe(2);
   });
 });
