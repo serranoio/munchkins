@@ -46,6 +46,7 @@ export default defineConfig({
                   link: "/internal/technology-decisions",
                 },
                 { text: "Plan", link: "/internal/plan" },
+                { text: "Use cases", link: "/internal/use-cases" },
               ],
             },
             ...(planNavItems.length > 0 ? [{ text: "Plans", items: planNavItems }] : []),
