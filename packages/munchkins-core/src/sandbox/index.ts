@@ -1,6 +1,5 @@
 export {
   gitWorktreeSandbox,
-  type IntegrateContext,
   type SandboxFactory,
   type SandboxHandle,
   type TeardownContext,

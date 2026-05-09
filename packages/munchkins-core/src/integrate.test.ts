@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { AgentCLI, type SpawnOptions, type SpawnResult } from "./builder/agent-cli.js";
-import { integrateBranch } from "./integrate.js";
+import { detectProvider, integrateBranch, integrateMerge, integratePR } from "./integrate.js";
 import { createWorktree } from "./worktree.js";
 
 const TEST_GIT_IDENTITY = {
@@ -299,5 +299,157 @@ describe("integrateBranch", () => {
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("fresh feature");
+  });
+});
+
+describe("integrateMerge strategy", () => {
+  let repo: Repo;
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+  afterEach(() => repo.cleanup());
+
+  test("clean two-branch setup integrates without invoking fixer (I1)", async () => {
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    const strategy = integrateMerge();
+    expect(strategy.kind).toBe("merge");
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await strategy.run({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "no conflict",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
+    expect(log).toContain("fresh feature");
+  });
+
+  test("conflicting setup with stub fixer resolves and integrates (I2)", async () => {
+    const { workdir, branch, file } = await setupSingleFileConflict(repo.path);
+
+    const cli = new StubFixerCLI(async (opts) => {
+      await Bun.write(join(opts.cwd, file), "export const x = 1; // merged\n");
+      return { exitCode: 0, output: "", durationMs: 1 };
+    });
+
+    const result = await integrateMerge().run({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "fix it",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(1);
+
+    const finalContent = await Bun.file(join(repo.path, file)).text();
+    expect(finalContent).toContain("merged");
+    expect(finalContent).not.toContain("<<<<<<<");
+  });
+});
+
+describe("integratePR strategy", () => {
+  let repo: Repo;
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+  afterEach(() => repo.cleanup());
+
+  test("github: missing gh fails fast at pre-flight, no rebase attempted (I3)", async () => {
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    // Empty PATH ensures `gh` cannot be found.
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      // Force github provider so we don't run `git remote get-url` in detection.
+      const result = await integratePR({ provider: "github" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "no conflict",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/gh not installed/);
+        expect(result.fixerIters).toBe(0);
+      }
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    // Sanity-check: rebase was not attempted — workdir is still on its commit
+    // with no rebase markers and the branch HEAD hasn't changed.
+    const headInWorkdir = (await $`git rev-parse HEAD`.cwd(workdir).quiet()).text().trim();
+    const branchHead = (await $`git rev-parse ${branch}`.cwd(repo.path).quiet()).text().trim();
+    expect(headInWorkdir).toBe(branchHead);
+  });
+
+  test("gitlab: missing glab fails fast at pre-flight (I4)", async () => {
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const result = await integratePR({ provider: "gitlab" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "no conflict",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/glab not installed/);
+        expect(result.fixerIters).toBe(0);
+      }
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+});
+
+describe("detectProvider", () => {
+  let repo: Repo;
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+  afterEach(() => repo.cleanup());
+
+  test("returns gitlab for a gitlab.com SSH URL (I5)", async () => {
+    await $`git remote add origin git@gitlab.com:foo/bar.git`.cwd(repo.path).env(gitEnv()).quiet();
+    const provider = await detectProvider(repo.path, "origin");
+    expect(provider).toBe("gitlab");
+  });
+
+  test("returns github for a github.com HTTPS URL (I6)", async () => {
+    await $`git remote add origin https://github.com/foo/bar.git`
+      .cwd(repo.path)
+      .env(gitEnv())
+      .quiet();
+    const provider = await detectProvider(repo.path, "origin");
+    expect(provider).toBe("github");
   });
 });

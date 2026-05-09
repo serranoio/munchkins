@@ -138,6 +138,14 @@ export class RunLog {
     this.markdown = markdown;
   }
 
+  getAgentSummaryMarkdown(): string | undefined {
+    return this.markdown;
+  }
+
+  getAgentSummaryCommitMessage(): string | undefined {
+    return this.commitMessage;
+  }
+
   private _writeClaudeCall(
     prefix: string,
     kind: "agent" | "summary" | "fixer",

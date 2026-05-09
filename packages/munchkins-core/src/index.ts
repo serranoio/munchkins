@@ -20,9 +20,16 @@ export {
   type Verbosity,
 } from "./builder/index.js";
 export {
+  detectProvider,
   type IntegrateOptions,
+  type IntegratePROptions,
   type IntegrateResult,
+  type IntegrationContext,
+  type IntegrationResult,
+  type IntegrationStrategy,
   integrateBranch,
+  integrateMerge,
+  integratePR,
   type RebaseAndResolveOptions,
   type RebaseAndResolveResult,
   rebaseAndResolve,
@@ -31,7 +38,6 @@ export { AgentRegistry, registry } from "./registry/index.js";
 export { RunLog, type RunSummary } from "./run-log.js";
 export {
   gitWorktreeSandbox,
-  type IntegrateContext,
   type SandboxFactory,
   type SandboxHandle,
   type TeardownContext,

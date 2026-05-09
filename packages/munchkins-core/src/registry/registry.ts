@@ -60,6 +60,10 @@ export class AgentRegistry {
         "--cli <cli>",
         "Backend CLI: claude (default) or codex. Equivalent to env MUNCHKINS_CLI; flag wins on conflict.",
       );
+      sub.option(
+        "--integrate <mode>",
+        "Integration strategy for the agent's branch. `merge` (default): rebase + ff-merge into base. `pr`: rebase + push + open PR via `gh`/`glab`.",
+      );
       for (const [flag, schema] of builder.options) {
         const spec = flagSpec(flag, schema);
         if (schema.required) {
@@ -76,6 +80,9 @@ export class AgentRegistry {
         if (rawOpts.verbose) process.env[`${OPTION_ENV_PREFIX}verbose`] = "true";
         if (rawOpts.cli !== undefined) {
           process.env[`${OPTION_ENV_PREFIX}cli`] = String(rawOpts.cli);
+        }
+        if (rawOpts.integrate !== undefined) {
+          process.env[`${OPTION_ENV_PREFIX}integrate`] = String(rawOpts.integrate);
         }
         for (const flag of builder.options.keys()) {
           const value = rawOpts[flag];

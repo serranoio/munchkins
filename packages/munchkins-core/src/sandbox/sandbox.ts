@@ -1,36 +1,8 @@
 import { $ } from "bun";
-import type { AgentCLI } from "../builder/agent-cli.js";
-import { integrateBranch } from "../integrate.js";
 import { cleanupWorktree, createWorktree, deleteBranch } from "../worktree.js";
-
-export interface IntegrateContext {
-  /** Original goal text from the user-message; surfaces in the fixer's user prompt. */
-  originalGoal: string;
-  /** Deterministic checks to re-run inside the worktree after a fixer iteration. */
-  postFixChecks: string[];
-  /** CLI used to spawn the merge fixer when conflicts arise. */
-  cli: AgentCLI;
-  /** Hook for the run-log to capture each fixer invocation. */
-  onFixerInvocation?: (info: {
-    iter: number;
-    systemPrompt: string;
-    userPrompt: string;
-    response: string;
-    exitCode: number;
-    durationMs: number;
-  }) => void;
-  /** Hook for narrating progress to the operator. */
-  log?: (line: string) => void;
-}
 
 export interface TeardownContext {
   failureReason?: string;
-  /**
-   * If supplied (and outcome is "pass"), teardown integrates the agent's branch
-   * into the parent before cleanup. On integration failure the worktree and
-   * branch are preserved and `{ ok: false, reason }` is returned.
-   */
-  integrate?: IntegrateContext;
 }
 
 export type TeardownResult = { ok: true } | { ok: false; reason: string };
@@ -40,11 +12,12 @@ export interface SandboxHandle {
   env: Record<string, string>;
   diff?: () => Promise<string>;
   /**
-   * On "pass": when `ctx.integrate` is provided, runs rebase + ff-merge before
-   * cleanup; on integration failure the worktree and branch are preserved and
-   * `{ ok: false }` is returned. On "fail": preserves the worktree and branch
-   * for the operator and returns `{ ok: true }`. Throws only on caller errors
-   * (e.g. uncommitted changes left in the worktree on a "pass" run).
+   * Cleanup-only contract. On "pass": asserts no uncommitted changes left in
+   * the sandbox, then removes the worktree and branch. On "fail": preserves
+   * the worktree and branch for the operator and returns `{ ok: true }`.
+   * Throws only on caller errors (e.g. uncommitted changes left on a "pass"
+   * run). Integration is the run layer's responsibility — callers must have
+   * already integrated (or chosen not to) before invoking teardown.
    */
   teardown(outcome: "pass" | "fail", ctx?: TeardownContext): Promise<TeardownResult>;
 }
@@ -71,27 +44,6 @@ export function gitWorktreeSandbox(): SandboxFactory {
           throw new Error(
             `worktree ${path} has uncommitted changes; agent must commit before teardown:\n${status}`,
           );
-        }
-        if (ctx?.integrate) {
-          const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
-            .text()
-            .trim();
-          const result = await integrateBranch({
-            workdir: path,
-            branch: currentBranch,
-            repoRoot,
-            baseBranch,
-            originalGoal: ctx.integrate.originalGoal,
-            cli: ctx.integrate.cli,
-            postFixChecks: ctx.integrate.postFixChecks,
-            onFixerInvocation: ctx.integrate.onFixerInvocation,
-            log: ctx.integrate.log,
-          });
-          if (!result.ok) {
-            console.error(`worktree preserved at ${path} (branch: ${currentBranch})`);
-            console.error(`reason: ${result.reason}`);
-            return { ok: false, reason: result.reason };
-          }
         }
         await cleanupWorktree(path, repoRoot);
         await deleteBranch(currentBranch, repoRoot);

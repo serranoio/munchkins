@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
+import { type IntegrationStrategy, integrateMerge, integratePR } from "../integrate.js";
 import { RunLog } from "../run-log.js";
-import type { IntegrateContext, SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
+import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
 import { renameBranch } from "../worktree.js";
 import { AgentCLI } from "./agent-cli.js";
 import { Prompt } from "./prompt.js";
@@ -41,14 +42,18 @@ export interface RunResult {
 }
 
 export class AgentBuilder {
-  readonly name: string;
-  readonly description?: string;
-  readonly sandbox?: SandboxFactory;
+  // Internally writable so .rename() / .describe() / .sandbox() can update them.
+  // Public reads still see the latest value via the standard field access.
+  name: string;
+  description?: string;
+  sandbox?: SandboxFactory;
   readonly options = new Map<string, OptionSchema>();
 
+  // Exposed (non-public) so .thenRun() can copy state into a fresh builder.
   private steps: Step[] = [];
   private summaryWriterPrompt?: Prompt;
   private cronConfig?: CronConfig;
+  private integration?: IntegrationStrategy;
 
   constructor(name: string, description?: string, sandbox?: SandboxFactory) {
     this.name = name;
@@ -98,6 +103,81 @@ export class AgentBuilder {
     return this;
   }
 
+  integrate(strategy: IntegrationStrategy): this {
+    this.integration = strategy;
+    return this;
+  }
+
+  setSandbox(factory: SandboxFactory): this {
+    this.sandbox = factory;
+    return this;
+  }
+
+  rename(name: string): this {
+    this.name = name;
+    return this;
+  }
+
+  describe(description: string): this {
+    this.description = description;
+    return this;
+  }
+
+  /**
+   * Returns a NEW AgentBuilder whose steps are this.steps concatenated with
+   * other.steps. Sandbox, summaryWriter, and integration are STRIPPED — the
+   * caller must set them on the returned builder via .setSandbox() /
+   * .summaryWriter() / .integrate(). Does not mutate either input.
+   */
+  thenRun(other: AgentBuilder): AgentBuilder {
+    const composed = new AgentBuilder(this.name, this.description);
+    for (const [k, v] of this.options) composed.options.set(k, v);
+    for (const [k, v] of other.options) composed.options.set(k, v);
+    composed.steps = [...this.steps, ...other.steps];
+    if (this.cronConfig) composed.cronConfig = this.cronConfig;
+    return composed;
+  }
+
+  /** Read-only access to the configured integration strategy. */
+  getIntegration(): IntegrationStrategy | undefined {
+    return this.integration;
+  }
+
+  /** Step count — used by composition tests to assert non-mutation. */
+  getStepCount(): number {
+    return this.steps.length;
+  }
+
+  /** Read-only access to the configured summary writer prompt, if any. */
+  getSummaryWriter(): Prompt | undefined {
+    return this.summaryWriterPrompt;
+  }
+
+  /** Read-only access to the resolved sandbox factory, if any. */
+  getSandbox(): SandboxFactory | undefined {
+    return this.sandbox;
+  }
+
+  /**
+   * Resolve which integration strategy to use, applying precedence:
+   * operator flag > author declaration > run-layer default (`integrateMerge`).
+   * Exposed (with underscore) so tests can verify selection without running
+   * the full pipeline.
+   */
+  _selectIntegrationStrategy(
+    flag: string | undefined,
+  ): { ok: true; strategy: IntegrationStrategy } | { ok: false; reason: string } {
+    if (flag !== undefined && flag !== "merge" && flag !== "pr") {
+      return {
+        ok: false,
+        reason: `unknown integration mode: ${flag}; expected "merge" or "pr"`,
+      };
+    }
+    if (flag === "pr") return { ok: true, strategy: integratePR() };
+    if (flag === "merge") return { ok: true, strategy: integrateMerge() };
+    return { ok: true, strategy: this.integration ?? integrateMerge() };
+  }
+
   cron(spec: string, opts: { userMessage: string; verbosity?: Verbosity }): this {
     if (this.cronConfig) {
       throw new Error(
@@ -120,7 +200,7 @@ export class AgentBuilder {
     const repoRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
 
     if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
-      this.describe(repoRoot);
+      this._printDescribe(repoRoot);
       return { worktreePath: "", branch: "", succeeded: true };
     }
 
@@ -185,7 +265,7 @@ export class AgentBuilder {
       failureReason = (err as Error).message;
     }
 
-    // Summary writer phase — runs after main steps succeed, before teardown
+    // Summary writer phase — runs after main steps succeed, before integration.
     let commitMessage: string | undefined;
     if (!failureReason && this.summaryWriterPrompt && sandboxHandle?.diff) {
       const writerResult = await this.runSummaryWriter(
@@ -203,36 +283,52 @@ export class AgentBuilder {
       }
     }
 
-    // Hand integration off to the sandbox via teardown. Integration is the
-    // default for any sandboxed, non-failed run — agents without a summary
-    // writer still get their commits rebased and ff-merged onto the parent.
-    // teardown resolves conflicts via the merge-fixer loop and preserves the
-    // worktree on failure; a failed integration flips the run's outcome to
-    // "fail" here so the on-fail commands and run-log reflect reality.
+    // Integration phase — strategy precedence: operator flag > author > default.
+    let prUrl: string | undefined;
+    if (sandboxHandle && !failureReason) {
+      const selection = this._selectIntegrationStrategy(process.env.__MUNCHKINS_OPT_integrate);
+      if (!selection.ok) {
+        failureReason = selection.reason;
+      } else {
+        const strategy = selection.strategy;
+        const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
+          .text()
+          .trim();
+        const result = await strategy.run({
+          workdir: sandboxHandle.cwd,
+          branch: sandboxHandle.env.BRANCH,
+          repoRoot,
+          baseBranch,
+          cli: AgentCLI.fromEnv(),
+          postFixChecks: collectPostFixChecks(this.steps),
+          originalGoal: userMessageText ?? "",
+          commitMessage: runLog.getAgentSummaryCommitMessage() ?? commitMessage,
+          markdownSummary: runLog.getAgentSummaryMarkdown(),
+          log: (line) => logger.integrationLine(line),
+          onFixerInvocation: (info) =>
+            runLog.fixerInvocation(
+              this.steps.length,
+              info.iter,
+              info.systemPrompt,
+              info.userPrompt,
+              info.response,
+              info.exitCode,
+              info.durationMs,
+            ),
+        });
+
+        if (!result.ok) {
+          failureReason = result.reason;
+        } else if (result.prUrl) {
+          prUrl = result.prUrl;
+        }
+      }
+    }
+
+    // Teardown is now cleanup-only.
     if (sandboxHandle) {
-      const integrateCtx: IntegrateContext | undefined = !failureReason
-        ? {
-            originalGoal: userMessageText ?? "",
-            postFixChecks: collectPostFixChecks(this.steps),
-            cli: AgentCLI.fromEnv(),
-            onFixerInvocation: (info) =>
-              runLog.fixerInvocation(
-                this.steps.length,
-                info.iter,
-                info.systemPrompt,
-                info.userPrompt,
-                info.response,
-                info.exitCode,
-                info.durationMs,
-              ),
-            log: (line) => logger.integrationLine(line),
-          }
-        : undefined;
       const initialOutcome = failureReason ? "fail" : "pass";
-      const teardownResult = await sandboxHandle.teardown(initialOutcome, {
-        failureReason,
-        integrate: integrateCtx,
-      });
+      const teardownResult = await sandboxHandle.teardown(initialOutcome, { failureReason });
       if (!teardownResult.ok) {
         failureReason = teardownResult.reason;
       }
@@ -247,6 +343,7 @@ export class AgentBuilder {
         tokensIn: runLog.getTokensIn(),
         tokensOut: runLog.getTokensOut(),
         commitMessage,
+        prUrl,
       });
     } else {
       logger.fail(failureReason, sandboxHandle);
@@ -302,8 +399,6 @@ export class AgentBuilder {
     runLog.accumulateUsage(r.usage);
     runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
 
-    // Parse the last JSON object containing commitMessage from the output.
-    // Tolerate a trailing ``` fence — the prompt forbids it but models still wrap occasionally.
     let cleaned = r.output.trimEnd();
     if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3).trimEnd();
     const jsonMatch = cleaned.match(/\{[\s\S]*"commitMessage"[\s\S]*\}\s*$/);
@@ -330,9 +425,6 @@ export class AgentBuilder {
 
     runLog.setAgentSummary(parsed.commitMessage, parsed.markdown);
 
-    // Prepend the changelog inside the worktree and commit it on the agent
-    // branch so the rebase carries it atomically with the rest of the run's
-    // commits. For non-sandboxed runs the file is written but left uncommitted.
     const changelogPath = runLog.prependChangelogIn(cwd);
     if (changelogPath && sandboxHandle) {
       await $`git add ${changelogPath}`.cwd(cwd).quiet();
@@ -342,7 +434,7 @@ export class AgentBuilder {
     return { commitMessage: parsed.commitMessage };
   }
 
-  private describe(repoRoot: string): void {
+  private _printDescribe(repoRoot: string): void {
     banner("agent", `Dry run — ${this.name}`);
     if (this.description) console.log(`${C.dim}description: ${this.description}${C.reset}`);
     console.log(`${C.dim}repoRoot:    ${repoRoot}${C.reset}`);
@@ -394,7 +486,6 @@ export class AgentBuilder {
       }
     }
 
-    // Summary writer section
     if (this.summaryWriterPrompt) {
       banner("agent", "Summary writer phase (resolved)");
 
@@ -426,6 +517,10 @@ export class AgentBuilder {
         `${C.dim}Summary writer: (none — no .summaryWriter() declared on this agent)${C.reset}`,
       );
     }
+
+    const integrationKind =
+      process.env.__MUNCHKINS_OPT_integrate ?? this.integration?.kind ?? "merge";
+    console.log(`${C.dim}integration: ${integrationKind}${C.reset}`);
 
     banner(
       "pass",

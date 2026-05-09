@@ -219,6 +219,167 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
   return r;
 }
 
+/**
+ * Run-layer integration strategy. Chosen by precedence:
+ * operator CLI flag > author declaration > run-layer default (`integrateMerge`).
+ */
+export interface IntegrationContext {
+  workdir: string;
+  branch: string;
+  repoRoot: string;
+  baseBranch: string;
+  cli: AgentCLI;
+  postFixChecks: string[];
+  originalGoal: string;
+  /** Set by the summary writer when one ran — used as PR title. */
+  commitMessage?: string;
+  /** Set by the summary writer when one ran — used as PR body. */
+  markdownSummary?: string;
+  log?: (line: string) => void;
+  onFixerInvocation?: (info: {
+    iter: number;
+    systemPrompt: string;
+    userPrompt: string;
+    response: string;
+    exitCode: number;
+    durationMs: number;
+  }) => void;
+}
+
+export type IntegrationResult =
+  | { ok: true; fixerIters: number; prUrl?: string }
+  | { ok: false; reason: string; fixerIters: number };
+
+export interface IntegrationStrategy {
+  readonly kind: "merge" | "pr";
+  run(ctx: IntegrationContext): Promise<IntegrationResult>;
+}
+
+export function integrateMerge(): IntegrationStrategy {
+  return {
+    kind: "merge",
+    async run(ctx) {
+      return integrateBranch({
+        workdir: ctx.workdir,
+        branch: ctx.branch,
+        repoRoot: ctx.repoRoot,
+        baseBranch: ctx.baseBranch,
+        originalGoal: ctx.originalGoal,
+        cli: ctx.cli,
+        postFixChecks: ctx.postFixChecks,
+        onFixerInvocation: ctx.onFixerInvocation,
+        log: ctx.log,
+      });
+    },
+  };
+}
+
+export interface IntegratePROptions {
+  /** "auto" (default) detects from `git remote get-url $remote` containing "gitlab". */
+  provider?: "auto" | "github" | "gitlab";
+  /** Default "origin". */
+  remote?: string;
+}
+
+export function integratePR(opts?: IntegratePROptions): IntegrationStrategy {
+  const provider = opts?.provider ?? "auto";
+  const remote = opts?.remote ?? "origin";
+  return {
+    kind: "pr",
+    async run(ctx) {
+      const resolvedProvider =
+        provider === "auto" ? await detectProvider(ctx.repoRoot, remote) : provider;
+      const cliName = resolvedProvider === "gitlab" ? "glab" : "gh";
+      // Bun.which honors a per-call PATH so tests can scope availability without
+      // mutating the global env Bun captured at shell init.
+      const probe = Bun.which(cliName, { PATH: process.env.PATH ?? "" });
+      if (!probe) {
+        return {
+          ok: false,
+          reason: `${cliName} not installed or not on PATH; required for integratePR(provider=${resolvedProvider})`,
+          fixerIters: 0,
+        };
+      }
+
+      const r = await rebaseAndResolve({
+        workdir: ctx.workdir,
+        baseBranch: ctx.baseBranch,
+        originalGoal: ctx.originalGoal,
+        cli: ctx.cli,
+        postFixChecks: ctx.postFixChecks,
+        onFixerInvocation: ctx.onFixerInvocation,
+        log: ctx.log,
+      });
+      if (!r.ok) return r;
+
+      ctx.log?.(`pr: push ${ctx.branch} → ${remote}`);
+      const push = await $`git push -u ${remote} ${ctx.branch}`.cwd(ctx.workdir).nothrow().quiet();
+      if (push.exitCode !== 0) {
+        return {
+          ok: false,
+          reason: `git push to ${remote} failed: ${push.stderr.toString().slice(-500)}`,
+          fixerIters: r.fixerIters,
+        };
+      }
+
+      const title = ctx.commitMessage ?? `agent: ${ctx.branch}`;
+      const body = ctx.markdownSummary ?? "(no summary writer ran)";
+      ctx.log?.(`pr: open via ${resolvedProvider} into ${ctx.baseBranch}`);
+      const pr =
+        resolvedProvider === "gitlab"
+          ? await createGitlabMR(ctx.workdir, title, body, ctx.baseBranch)
+          : await createGithubPR(ctx.workdir, title, body, ctx.baseBranch);
+
+      if (!pr.ok) return { ok: false, reason: pr.reason, fixerIters: r.fixerIters };
+      ctx.log?.(`pr: ${pr.url}`);
+      return { ok: true, fixerIters: r.fixerIters, prUrl: pr.url };
+    },
+  };
+}
+
+export async function detectProvider(
+  repoRoot: string,
+  remote: string,
+): Promise<"github" | "gitlab"> {
+  const url = (await $`git remote get-url ${remote}`.cwd(repoRoot).nothrow().quiet()).text().trim();
+  return url.toLowerCase().includes("gitlab") ? "gitlab" : "github";
+}
+
+async function createGithubPR(
+  workdir: string,
+  title: string,
+  body: string,
+  base: string,
+): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+  const r = await $`gh pr create --title ${title} --body ${body} --base ${base}`
+    .cwd(workdir)
+    .nothrow()
+    .quiet();
+  if (r.exitCode !== 0) {
+    return { ok: false, reason: `gh pr create failed: ${r.stderr.toString().slice(-500)}` };
+  }
+  const urlMatch = r.stdout.toString().match(/https?:\/\/\S+/);
+  return { ok: true, url: urlMatch?.[0] ?? r.stdout.toString().trim() };
+}
+
+async function createGitlabMR(
+  workdir: string,
+  title: string,
+  body: string,
+  base: string,
+): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+  const r =
+    await $`glab mr create --title ${title} --description ${body} --target-branch ${base} --yes`
+      .cwd(workdir)
+      .nothrow()
+      .quiet();
+  if (r.exitCode !== 0) {
+    return { ok: false, reason: `glab mr create failed: ${r.stderr.toString().slice(-500)}` };
+  }
+  const urlMatch = r.stdout.toString().match(/https?:\/\/\S+/);
+  return { ok: true, url: urlMatch?.[0] ?? r.stdout.toString().trim() };
+}
+
 async function listConflictedFiles(cwd: string): Promise<string[]> {
   const r = await $`git diff --name-only --diff-filter=U`.cwd(cwd).nothrow().quiet();
   return r

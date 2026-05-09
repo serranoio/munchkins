@@ -39,6 +39,7 @@ export interface PassOpts {
   tokensIn: number;
   tokensOut: number;
   commitMessage?: string;
+  prUrl?: string;
 }
 
 interface DeterministicEntry {
@@ -77,17 +78,19 @@ export class RunLogger {
   pass(opts: PassOpts): void {
     if (this.verbose) {
       banner("pass", "PASS");
+      if (opts.prUrl) console.log(`${C.dim}pr: ${opts.prUrl}${C.reset}`);
       return;
     }
     const costStr = opts.cost === undefined ? "—" : `$${opts.cost.toFixed(4)}`;
     const tokenStr = `${opts.tokensIn}→${opts.tokensOut}`;
+    const prSuffix = opts.prUrl ? ` ${opts.prUrl}` : "";
     if (opts.commitMessage) {
       process.stdout.write(
-        `[${this.name}] PASS — ${opts.commitMessage} (${opts.totalDurationS}s, ${costStr})\n`,
+        `[${this.name}] PASS — ${opts.commitMessage} (${opts.totalDurationS}s, ${costStr})${prSuffix}\n`,
       );
     } else {
       process.stdout.write(
-        `[${this.name}] PASS — (${opts.totalDurationS}s, ${costStr}, ${tokenStr})\n`,
+        `[${this.name}] PASS — (${opts.totalDurationS}s, ${costStr}, ${tokenStr})${prSuffix}\n`,
       );
     }
   }
