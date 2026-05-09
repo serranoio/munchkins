@@ -4,6 +4,19 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## docs(summary-writer): forbid markdown headings in changelog body
+**2026-05-09 15:15 PDT · bug-fix · 321.1s · $2.0794**
+
+**Goal:** Stop the default summary-writer prompt from producing `##` headings inside changelog entry bodies, which collide with the harness-emitted entry title and break the document hierarchy.
+
+**Outcome:** Updated the Output contract section of `packages/munchkins/agents/_shared/prompts/summary-writer.md` to explicitly prohibit any Markdown headings (`#`, `##`, `###`, etc.) inside the `markdown` field. Promoted the bold inline labels (`**Goal:**`, `**Outcome:**`, `**Files changed:**`) from a suggested skeleton to a required body shape, and added a side-by-side correct/wrong example so the contrast is visual. The JSON output contract (`commitMessage` + `markdown` keys, no code fences) is unchanged, and the harness-side assembly in `RunLog.prependChangelogIn` was not touched. Per-agent summary-writer prompts under `feat-small` and `refactor` were left alone per the task constraints (they were out of scope unless they shared the defect).
+
+**Files changed:**
+- packages/munchkins/agents/_shared/prompts/summary-writer.md
+
+Future changelog entries produced by agents using this default prompt should contain zero `#`-prefixed lines in the body while still carrying the bold inline labels for Goal / Outcome / Files changed.
+
+---
 ## fix(munchkins-core): detect merge-fixer progress via working-tree content
 **2026-05-09 15:04 PDT · bug-fix · 451.4s · $2.6168**
 
