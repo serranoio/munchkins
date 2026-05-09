@@ -4,6 +4,39 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(agent-builder): extract RunLogger to centralize verbose/quiet formatting
+**2026-05-09 14:25 PDT · refactor · 590.3s · $3.3619**
+
+**Goal:** Extract every verbose/quiet branch site in `AgentBuilder.run()` (and its `runAgent` / `runDeterministic` / `runSummaryWriter` helpers) into a single `RunLogger` class so `run()` orchestrates and `RunLogger` formats — byte-identical output in both modes.
+
+**Outcome:** Created `packages/munchkins-core/src/builder/run-logger.ts` housing the new `RunLogger` class plus the `C` color table, `banner()`, and `printInvocation()` helpers (moved out of `agent-builder.ts` so there's a single home for terminal formatting). `AgentBuilder` imports them back, drops the inline `if (verbose) … else …` blocks at all twelve call sites, and threads a single `RunLogger` instance into the helpers in place of the bare `verbose: boolean` parameter. `streamOutput` stays where it was — it's a separate concern (Claude streaming) — and the env reads at the top of `run()` are untouched.
+
+**Refactor type:** extraction
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins-core/src/builder/agent-builder.ts | 642 | 525 | −117 |
+| packages/munchkins-core/src/builder/run-logger.ts | 0 | 200 | +200 |
+| packages/munchkins-core/src/index.ts | 46 | 46 | 0 |
+
+**Total:** 688 → 771 (Δ +83)
+
+**Files changed:**
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/run-logger.ts
+- packages/munchkins-core/src/index.ts
+
+**Call sites that now share the extracted helpers:**
+- `RunLogger.stepResultOk()` — called by both `runAgent` and `runSummaryWriter`, replacing the duplicated quiet-mode " ok (Xs, in→out)\n" line that previously existed inline in each.
+- `RunLogger.starting()` / `stepBanner()` / `pass()` / `fail()` / `logDir()` / `integrationLine()` — collapse the six verbose-vs-quiet branch pairs in `AgentBuilder.run()` into single calls.
+- `RunLogger.summaryWriterEmptyDiff()` / `summaryWriterStart()` — collapse the two branch pairs in `runSummaryWriter`.
+- `RunLogger.agentStepStart()` — collapses the single branch pair in `runAgent`.
+- `RunLogger.deterministicIterationHeader()` / `deterministicCommand()` / `deterministicCommandOutput()` / `deterministicQuietSummary()` / `fixerStart()` / `fixerResult()` — collapse the six branch pairs in `runDeterministic`.
+- `banner()` and `printInvocation()` — now defined once in `run-logger.ts` and re-imported by `agent-builder.ts` instead of being module-local helpers.
+
+---
 ## refactor(munchkins/agents): extract getAgentPromptsDir helper
 **2026-05-09 14:12 PDT · refactor · 243.6s · $1.6386**
 
