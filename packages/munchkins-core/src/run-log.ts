@@ -69,7 +69,6 @@ Autonomously-generated entries from agent runs. Most recent first.
 export class RunLog {
   readonly dir: string;
   readonly agent: string;
-  private repoRoot: string;
   private startedAt: number;
   private agentStepCount = 0;
   private deterministicCommandCount = 0;
@@ -86,7 +85,6 @@ export class RunLog {
 
   constructor(repoRoot: string, agentName: string, opts?: { slug?: string }) {
     this.agent = agentName;
-    this.repoRoot = repoRoot;
     this.startedAt = Date.now();
     const uuid = crypto.randomUUID().slice(0, 8);
     const slug = opts?.slug?.trim();
@@ -288,19 +286,24 @@ export class RunLog {
     };
     writeFileSync(join(this.dir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 
-    if (args.succeeded && this.commitMessage && this.markdown) {
-      this._prependChangelog(endedAt, summary.durationMs);
-    }
-
     return summary;
   }
 
-  private _prependChangelog(endedAt: number, durationMs: number): void {
-    // Concurrent runs may interleave; not handled.
+  // Prepend the run's changelog entry under `targetDir`. Returns the absolute path
+  // that was written, or undefined if there is no entry to record (no commitMessage
+  // / markdown set by a summary writer).
+  //
+  // Caller controls timing — for sandboxed runs the agent-builder calls this before
+  // teardown so the merge carries the changelog change atomically with the rest of
+  // the worktree's commits. Concurrent runs may interleave; not handled.
+  prependChangelogIn(targetDir: string): string | undefined {
+    if (!this.commitMessage || !this.markdown) return undefined;
+    const endedAt = Date.now();
+    const durationMs = endedAt - this.startedAt;
     const changelogPath = resolveEnvPath(
       process.env.MUNCHKINS_CHANGELOG_PATH,
-      join(this.repoRoot, "CHANGELOG.md"),
-      this.repoRoot,
+      join(targetDir, "CHANGELOG.md"),
+      targetDir,
     );
     const durationSeconds = (durationMs / 1000).toFixed(1);
     const dateStr = formatChangelogDate(endedAt);
@@ -317,7 +320,7 @@ export class RunLog {
     if (!existsSync(changelogPath)) {
       mkdirSync(dirname(changelogPath), { recursive: true });
       writeFileSync(changelogPath, `${CHANGELOG_HEADER}${entry}`);
-      return;
+      return changelogPath;
     }
 
     const existing = readFileSync(changelogPath, "utf-8");
@@ -325,7 +328,6 @@ export class RunLog {
     const headerEndMarker = "---\n\n";
     const markerIdx = existing.indexOf(headerEndMarker);
     if (markerIdx === -1) {
-      // No recognizable header — prepend entry at top
       writeFileSync(changelogPath, `${entry}${existing}`);
     } else {
       const afterHeader = existing.slice(markerIdx + headerEndMarker.length);
@@ -334,5 +336,6 @@ export class RunLog {
         `${existing.slice(0, markerIdx + headerEndMarker.length)}${entry}${afterHeader}`,
       );
     }
+    return changelogPath;
   }
 }

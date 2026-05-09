@@ -238,6 +238,18 @@ export class AgentBuilder {
       }
     }
 
+    // Prepend the changelog inside the worktree and commit it on the agent branch
+    // BEFORE teardown — the merge then carries the changelog atomically with the
+    // rest of the run's commits, so a teardown failure can't strand an unrecorded
+    // run. For non-sandboxed runs the file is written but left uncommitted.
+    if (!failureReason && commitMessage) {
+      const changelogPath = runLog.prependChangelogIn(cwd);
+      if (changelogPath && sandboxHandle) {
+        await $`git add ${changelogPath}`.cwd(cwd).quiet();
+        await $`git commit -m ${`docs(changelog): ${commitMessage}`}`.cwd(cwd).quiet();
+      }
+    }
+
     const outcome = failureReason ? "fail" : "pass";
     const totalDurationS = ((Date.now() - runStart) / 1000).toFixed(1);
 
