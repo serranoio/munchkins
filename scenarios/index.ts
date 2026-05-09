@@ -195,6 +195,21 @@ async function run(): Promise<ScenarioResult> {
   let sandboxPath: string | undefined;
   let cleanup: (() => void) | undefined;
 
+  type FailPhase = "setup" | "execution" | "assertion" | "cleanup" | "artifact";
+  const failResult = (
+    phase: FailPhase,
+    message: string,
+    opts?: { stack?: string },
+  ): ScenarioResult => ({
+    scenarioId: SCENARIO_ID,
+    result: "fail",
+    durationMs: Date.now() - start,
+    sandboxPath,
+    mockCallLog: getMockCallLog(),
+    failure: { phase, message, ...(opts?.stack ? { stack: opts.stack } : {}) },
+    harnessVersion: HARNESS_VERSION,
+  });
+
   // Ensure the artifact dir exists before the agent runs.
   mkdirSync(artifactDir, { recursive: true });
 
@@ -212,96 +227,44 @@ async function run(): Promise<ScenarioResult> {
 
     const agent = registry.get("bug-fix");
     if (!agent) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: getMockCallLog(),
-        failure: {
-          phase: "setup",
-          message:
-            'registry.get("bug-fix") returned undefined — bundle import did not register the agent',
-        },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult(
+        "setup",
+        'registry.get("bug-fix") returned undefined — bundle import did not register the agent',
+      );
     }
 
     const agentResult = await agent.run();
 
     if (!agentResult.succeeded) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: getMockCallLog(),
-        failure: {
-          phase: "execution",
-          message: agentResult.failureReason ?? "agent pipeline did not succeed",
-        },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult("execution", agentResult.failureReason ?? "agent pipeline did not succeed");
     }
 
     const log = getMockCallLog();
     const expected = getExpectedMockCallCount();
     if (log.length !== expected) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: log,
-        failure: {
-          phase: "assertion",
-          message: `mock-call audit: expected ${expected} invocations, got ${log.length}`,
-        },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult(
+        "assertion",
+        `mock-call audit: expected ${expected} invocations, got ${log.length}`,
+      );
     }
 
     const claudeAttempts = getClaudeAttempts();
     if (claudeAttempts.length > 0) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: log,
-        failure: {
-          phase: "assertion",
-          message: `audit guard: ${claudeAttempts.length} real \`claude\` spawn attempt(s) occurred`,
-        },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult(
+        "assertion",
+        `audit guard: ${claudeAttempts.length} real \`claude\` spawn attempt(s) occurred`,
+      );
     }
 
     const cleanupErr = await assertHappyPathCleanup(sandbox.path);
     if (cleanupErr) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: log,
-        failure: { phase: "assertion", message: cleanupErr },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult("assertion", cleanupErr);
     }
 
     // Assert that the framework deposited run-log artifacts at the configured location.
     const artifactErr = assertArtifacts();
     if (artifactErr) {
-      return {
-        scenarioId: SCENARIO_ID,
-        result: "fail",
-        durationMs: Date.now() - start,
-        sandboxPath,
-        mockCallLog: log,
-        failure: { phase: "artifact", message: artifactErr },
-        harnessVersion: HARNESS_VERSION,
-      };
+      return failResult("artifact", artifactErr);
     }
 
     cleanup();
@@ -313,19 +276,9 @@ async function run(): Promise<ScenarioResult> {
       harnessVersion: HARNESS_VERSION,
     };
   } catch (err) {
-    return {
-      scenarioId: SCENARIO_ID,
-      result: "fail",
-      durationMs: Date.now() - start,
-      sandboxPath,
-      mockCallLog: getMockCallLog(),
-      failure: {
-        phase: "setup",
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      },
-      harnessVersion: HARNESS_VERSION,
-    };
+    return failResult("setup", err instanceof Error ? err.message : String(err), {
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   }
 }
 

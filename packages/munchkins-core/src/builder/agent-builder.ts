@@ -314,31 +314,8 @@ export class AgentBuilder {
       return {};
     }
 
-    // Resolve user message for the writer's user prompt
-    const rawUserMessage = process.env.__MUNCHKINS_OPT_userMessage;
-    let originalGoal = "(no user message)";
-    if (rawUserMessage) {
-      const candidate = isAbsolute(rawUserMessage)
-        ? rawUserMessage
-        : join(repoRoot, rawUserMessage);
-      if (existsSync(candidate)) {
-        originalGoal = readFileSync(candidate, "utf-8");
-      } else {
-        originalGoal = rawUserMessage;
-      }
-    }
-
-    const userPrompt = [
-      "## Original goal",
-      originalGoal,
-      "",
-      "## Staged diff",
-      "```",
-      diff,
-      "```",
-      "",
-      "Output the JSON envelope.",
-    ].join("\n");
+    const originalGoal = resolveOriginalGoal(repoRoot);
+    const userPrompt = buildSummaryWriterUserPrompt(originalGoal, ["```", diff, "```"]);
 
     const resolved = this.summaryWriterPrompt?.resolve(repoRoot);
     if (!resolved) return {};
@@ -462,28 +439,10 @@ export class AgentBuilder {
     if (this.summaryWriterPrompt) {
       banner("agent", "Summary writer phase (resolved)");
 
-      // Resolve user message as it would be at run time
-      const rawUserMessage = process.env.__MUNCHKINS_OPT_userMessage;
-      let originalGoal = "(no user message)";
-      if (rawUserMessage) {
-        const abs = (p: string) => (isAbsolute(p) ? p : join(repoRoot, p));
-        const candidate = abs(rawUserMessage);
-        if (existsSync(candidate)) {
-          originalGoal = readFileSync(candidate, "utf-8");
-        } else {
-          originalGoal = rawUserMessage;
-        }
-      }
-
-      const userPromptPreview = [
-        "## Original goal",
-        originalGoal,
-        "",
-        "## Staged diff",
+      const originalGoal = resolveOriginalGoal(repoRoot);
+      const userPromptPreview = buildSummaryWriterUserPrompt(originalGoal, [
         "<constructed at run time from sandbox.diff()>",
-        "",
-        "Output the JSON envelope.",
-      ].join("\n");
+      ]);
 
       const { systemPrompt } = this.summaryWriterPrompt.resolve(repoRoot);
 
@@ -630,6 +589,28 @@ export class AgentBuilder {
       `deterministic step failed after ${max} iteration(s):\n${lastOutput.slice(-2000)}`,
     );
   }
+}
+
+function resolveOriginalGoal(repoRoot: string): string {
+  const rawUserMessage = process.env.__MUNCHKINS_OPT_userMessage;
+  if (!rawUserMessage) return "(no user message)";
+  const candidate = isAbsolute(rawUserMessage) ? rawUserMessage : join(repoRoot, rawUserMessage);
+  if (existsSync(candidate)) {
+    return readFileSync(candidate, "utf-8");
+  }
+  return rawUserMessage;
+}
+
+function buildSummaryWriterUserPrompt(originalGoal: string, diffSection: string[]): string {
+  return [
+    "## Original goal",
+    originalGoal,
+    "",
+    "## Staged diff",
+    ...diffSection,
+    "",
+    "Output the JSON envelope.",
+  ].join("\n");
 }
 
 function banner(kind: keyof typeof C, text: string): void {

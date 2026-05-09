@@ -10,15 +10,20 @@ interface Repo {
   cleanup: () => void;
 }
 
+const TEST_GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: "t",
+  GIT_AUTHOR_EMAIL: "t@t",
+  GIT_COMMITTER_NAME: "t",
+  GIT_COMMITTER_EMAIL: "t@t",
+} as const;
+
+function gitEnv(): Record<string, string | undefined> {
+  return { ...process.env, ...TEST_GIT_IDENTITY };
+}
+
 async function createRepo(branch: string): Promise<Repo> {
   const path = mkdtempSync(join(tmpdir(), "munchkins-sb-test-"));
-  const env = {
-    ...process.env,
-    GIT_AUTHOR_NAME: "t",
-    GIT_AUTHOR_EMAIL: "t@t",
-    GIT_COMMITTER_NAME: "t",
-    GIT_COMMITTER_EMAIL: "t@t",
-  };
+  const env = gitEnv();
   await $`git init -b ${branch}`.cwd(path).env(env).quiet();
   await Bun.write(join(path, "seed.ts"), "export const seed = 1;\n");
   await $`git add -A`.cwd(path).env(env).quiet();
@@ -37,13 +42,7 @@ async function createRepo(branch: string): Promise<Repo> {
 
 async function commit(cwd: string, file: string, content: string, msg: string): Promise<void> {
   await Bun.write(join(cwd, file), content);
-  const env = {
-    ...process.env,
-    GIT_AUTHOR_NAME: "t",
-    GIT_AUTHOR_EMAIL: "t@t",
-    GIT_COMMITTER_NAME: "t",
-    GIT_COMMITTER_EMAIL: "t@t",
-  };
+  const env = gitEnv();
   await $`git add -A`.cwd(cwd).env(env).quiet();
   await $`git commit -m ${msg}`.cwd(cwd).env(env).quiet();
 }
