@@ -345,21 +345,30 @@ export async function detectProvider(
   return url.toLowerCase().includes("gitlab") ? "gitlab" : "github";
 }
 
+type CreateResult = { ok: true; url: string } | { ok: false; reason: string };
+
+function parseCreateResult(
+  cliLabel: string,
+  r: { exitCode: number; stdout: { toString(): string }; stderr: { toString(): string } },
+): CreateResult {
+  if (r.exitCode !== 0) {
+    return { ok: false, reason: `${cliLabel} failed: ${r.stderr.toString().slice(-500)}` };
+  }
+  const stdout = r.stdout.toString();
+  return { ok: true, url: stdout.match(/https?:\/\/\S+/)?.[0] ?? stdout.trim() };
+}
+
 async function createGithubPR(
   workdir: string,
   title: string,
   body: string,
   base: string,
-): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+): Promise<CreateResult> {
   const r = await $`gh pr create --title ${title} --body ${body} --base ${base}`
     .cwd(workdir)
     .nothrow()
     .quiet();
-  if (r.exitCode !== 0) {
-    return { ok: false, reason: `gh pr create failed: ${r.stderr.toString().slice(-500)}` };
-  }
-  const urlMatch = r.stdout.toString().match(/https?:\/\/\S+/);
-  return { ok: true, url: urlMatch?.[0] ?? r.stdout.toString().trim() };
+  return parseCreateResult("gh pr create", r);
 }
 
 async function createGitlabMR(
@@ -367,17 +376,13 @@ async function createGitlabMR(
   title: string,
   body: string,
   base: string,
-): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+): Promise<CreateResult> {
   const r =
     await $`glab mr create --title ${title} --description ${body} --target-branch ${base} --yes`
       .cwd(workdir)
       .nothrow()
       .quiet();
-  if (r.exitCode !== 0) {
-    return { ok: false, reason: `glab mr create failed: ${r.stderr.toString().slice(-500)}` };
-  }
-  const urlMatch = r.stdout.toString().match(/https?:\/\/\S+/);
-  return { ok: true, url: urlMatch?.[0] ?? r.stdout.toString().trim() };
+  return parseCreateResult("glab mr create", r);
 }
 
 async function listConflictedFiles(cwd: string): Promise<string[]> {
