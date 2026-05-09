@@ -4,6 +4,24 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## fix(munchkins-core): detect merge-fixer progress via working-tree content
+**2026-05-09 15:04 PDT · bug-fix · 451.4s · $2.6168**
+
+## Goal
+Fix the merge-fixer harness in `integrate.ts` so it stops misclassifying every real conflict resolution as "no progress."
+
+## Outcome
+Replaced the index-based post-fixer progress check with a content-based check using `git diff --check`. The new logic detects leftover conflict markers in the working tree, bails out if the fixer wrote markers to files outside the conflict set, fails with a no-progress reason only when every conflicted file still has markers, and stages only files verified clean (per-file `git add`, never `git add -A`). Added a small `abortAndFail` helper to deduplicate the bail-out paths in `rebaseAndResolve`. Introduced `packages/munchkins-core/src/integrate.test.ts` with five real-`integrateBranch` tests covering the happy path, no-progress, partial-progress (regression test that proves the outer loop re-prompts the fixer), CLI failure, and the clean-rebase no-spawn case.
+
+## Files changed
+- `packages/munchkins-core/src/integrate.ts` — swap index-based stillConflicted check for `filesWithLeftoverMarkers` (new helper using `git diff --check`); add stray-file guard; switch staging to per-file `git add`; extract repeated `abortRebase` + return into a local `abortAndFail` helper.
+- `packages/munchkins-core/src/integrate.test.ts` — new file. mkdtemp + `git init -b main` repos, `gitEnv()` helper with `TEST_GIT_IDENTITY`, `StubFixerCLI` with constructor-injected handler and `FailIfSpawnedCLI`, plus shared `setupSingleFileConflict` / `setupTwoFileConflict` setup helpers driving the five required scenarios.
+
+## Notes for future readers
+- The partial-progress test (#3) is the load-bearing regression: it asserts `cli.invocations === 2` and `fixerIters === 2`, which is only achievable if the harness correctly recognizes per-file forward progress and re-enters the fixer for the remaining unresolved file.
+- `listConflictedFiles` is intentionally retained for the *initial* per-iteration enumeration before the fixer runs; only the post-fixer check moved to a content-based detector.
+
+---
 ## refactor(agent-builder): extract RunLogger to centralize verbose/quiet formatting
 **2026-05-09 14:25 PDT · refactor · 590.3s · $3.3619**
 
