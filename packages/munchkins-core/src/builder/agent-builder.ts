@@ -6,17 +6,9 @@ import type { IntegrateContext, SandboxFactory, SandboxHandle } from "../sandbox
 import { renameBranch } from "../worktree.js";
 import { AgentCLI } from "./agent-cli.js";
 import { Prompt } from "./prompt.js";
+import { banner, C, printInvocation, RunLogger } from "./run-logger.js";
 import { deriveSlugDeterministic, getSlugWithRetry, type SlugResult } from "./slug.js";
 import { spawnClaude } from "./spawn-claude.js";
-
-const C = {
-  agent: "\x1b[36m",
-  deterministic: "\x1b[33m",
-  pass: "\x1b[32m",
-  fail: "\x1b[31m",
-  dim: "\x1b[2m",
-  reset: "\x1b[0m",
-} as const;
 
 export interface OptionSchema {
   type: "string" | "boolean" | "number" | "string[]";
@@ -108,6 +100,7 @@ export class AgentBuilder {
     const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
     const thinking = process.env.__MUNCHKINS_OPT_thinking === "true";
     const streamOutput = verbose || thinking;
+    const logger = new RunLogger(this.name, verbose);
 
     let sandboxHandle: SandboxHandle | undefined;
     let cwd: string;
@@ -147,29 +140,18 @@ export class AgentBuilder {
     }
     const runStart = Date.now();
 
-    if (verbose) {
-      banner("agent", `AgentBuilder.run() — ${this.name}`);
-      console.log(`${C.dim}cwd:       ${cwd}${C.reset}`);
-      console.log(`${C.dim}steps:     ${this.steps.length}${C.reset}`);
-    } else {
-      process.stdout.write(`[${this.name}] starting\n`);
-    }
+    logger.starting(cwd, this.steps.length);
 
     let failureReason: string | undefined;
 
     try {
       for (let i = 0; i < this.steps.length; i++) {
         const step = this.steps[i];
+        logger.stepBanner(i, this.steps.length, step.kind);
         if (step.kind === "agent") {
-          if (verbose) {
-            banner("agent", `Step ${i + 1}/${this.steps.length} — agent`);
-          }
-          await this.runAgent(step, cwd, repoRoot, runLog, i, verbose, streamOutput);
+          await this.runAgent(step, cwd, repoRoot, runLog, i, logger, streamOutput);
         } else {
-          if (verbose) {
-            banner("deterministic", `Step ${i + 1}/${this.steps.length} — deterministic`);
-          }
-          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, verbose, streamOutput);
+          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, logger, streamOutput);
         }
       }
     } catch (err) {
@@ -184,7 +166,7 @@ export class AgentBuilder {
         cwd,
         repoRoot,
         runLog,
-        verbose,
+        logger,
         streamOutput,
       );
       if (writerResult.failureReason) {
@@ -216,10 +198,7 @@ export class AgentBuilder {
                 info.exitCode,
                 info.durationMs,
               ),
-            log: (line) => {
-              if (verbose) console.log(`${C.dim}${line}${C.reset}`);
-              else process.stdout.write(`[${this.name}] ${line}\n`);
-            },
+            log: (line) => logger.integrationLine(line),
           }
         : undefined;
       const initialOutcome = failureReason ? "fail" : "pass";
@@ -235,33 +214,15 @@ export class AgentBuilder {
     const totalDurationS = ((Date.now() - runStart) / 1000).toFixed(1);
 
     if (!failureReason) {
-      if (verbose) {
-        banner("pass", "PASS");
-      } else {
-        const cost = runLog.getCostUsd();
-        const costStr = cost === undefined ? "—" : `$${cost.toFixed(4)}`;
-        const tokenStr = `${runLog.getTokensIn()}→${runLog.getTokensOut()}`;
-        if (commitMessage) {
-          process.stdout.write(
-            `[${this.name}] PASS — ${commitMessage} (${totalDurationS}s, ${costStr})\n`,
-          );
-        } else {
-          process.stdout.write(
-            `[${this.name}] PASS — (${totalDurationS}s, ${costStr}, ${tokenStr})\n`,
-          );
-        }
-      }
+      logger.pass({
+        totalDurationS,
+        cost: runLog.getCostUsd(),
+        tokensIn: runLog.getTokensIn(),
+        tokensOut: runLog.getTokensOut(),
+        commitMessage,
+      });
     } else {
-      if (verbose) {
-        banner("fail", "FAIL");
-        console.error(`${C.dim}reason:   ${failureReason}${C.reset}`);
-      } else {
-        process.stderr.write(`[${this.name}] FAIL — ${failureReason}\n`);
-        if (sandboxHandle) {
-          process.stderr.write(`  worktree: ${sandboxHandle.cwd}\n`);
-          process.stderr.write(`  branch: ${sandboxHandle.env.BRANCH ?? ""}\n`);
-        }
-      }
+      logger.fail(failureReason, sandboxHandle);
     }
 
     const worktreePath = sandboxHandle?.cwd ?? "";
@@ -274,14 +235,7 @@ export class AgentBuilder {
       failureReason,
     });
 
-    // Always print log dir so operator can drill in
-    const logPath = summary.logDir;
-    if (verbose) {
-      // In verbose mode the log dir is part of the standard dim output
-      console.log(`${C.dim}log: ${logPath}${C.reset}`);
-    } else {
-      process.stdout.write(`  log: ${logPath}\n`);
-    }
+    logger.logDir(summary.logDir);
 
     if (!failureReason) {
       return { worktreePath, branch, succeeded: true };
@@ -294,16 +248,12 @@ export class AgentBuilder {
     cwd: string,
     repoRoot: string,
     runLog: RunLog,
-    verbose: boolean,
+    logger: RunLogger,
     streamOutput: boolean,
   ): Promise<{ failureReason?: string; commitMessage?: string }> {
     const diff = await sandboxHandle.diff?.();
     if (!diff?.trim()) {
-      if (verbose) {
-        console.log("no diff — skipping summary writer");
-      } else {
-        process.stdout.write(`[${this.name}] summary writer skipped (empty diff)\n`);
-      }
+      logger.summaryWriterEmptyDiff();
       return {};
     }
 
@@ -314,23 +264,13 @@ export class AgentBuilder {
     if (!resolved) return {};
     const { systemPrompt } = resolved;
 
-    if (verbose) {
-      banner("agent", "Summary writer phase");
-      printInvocation(systemPrompt, userPrompt);
-    } else {
-      process.stdout.write(`[${this.name}] summary writer`);
-    }
+    logger.summaryWriterStart(systemPrompt, userPrompt);
 
     const startTime = Date.now();
     const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
     const durationMs = Date.now() - startTime;
 
-    if (!verbose) {
-      const durationS = (durationMs / 1000).toFixed(1);
-      const tokIn = r.usage?.inputTokens ?? 0;
-      const tokOut = r.usage?.outputTokens ?? 0;
-      process.stdout.write(` ok (${durationS}s, ${tokIn}→${tokOut})\n`);
-    }
+    logger.stepResultOk(durationMs, r.usage);
 
     runLog.accumulateUsage(r.usage);
     runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
@@ -472,24 +412,15 @@ export class AgentBuilder {
     repoRoot: string,
     runLog: RunLog,
     stepIndex: number,
-    verbose: boolean,
+    logger: RunLogger,
     streamOutput: boolean,
   ): Promise<void> {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
-    if (verbose) {
-      printInvocation(systemPrompt, userPrompt);
-    } else {
-      process.stdout.write(`[${this.name}] step ${stepIndex + 1}/${this.steps.length} (agent)`);
-    }
+    logger.agentStepStart(stepIndex, this.steps.length, systemPrompt, userPrompt);
     const startTime = Date.now();
     const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
     const durationMs = Date.now() - startTime;
-    if (!verbose) {
-      const durationS = (durationMs / 1000).toFixed(1);
-      const tokIn = r.usage?.inputTokens ?? 0;
-      const tokOut = r.usage?.outputTokens ?? 0;
-      process.stdout.write(` ok (${durationS}s, ${tokIn}→${tokOut})\n`);
-    }
+    logger.stepResultOk(durationMs, r.usage);
     runLog.agentStep(stepIndex, systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
     runLog.accumulateUsage(r.usage);
     if (r.exitCode !== 0) {
@@ -504,22 +435,20 @@ export class AgentBuilder {
     env: Record<string, string | undefined>,
     runLog: RunLog,
     stepIndex: number,
-    verbose: boolean,
+    logger: RunLogger,
     streamOutput: boolean,
   ): Promise<void> {
     const max = step.loop?.maxIterations ?? 1;
     let lastOutput = "";
     for (let i = 1; i <= max; i++) {
-      if (verbose) {
-        console.log(`${C.deterministic}  iteration ${i}/${max}${C.reset}`);
-      }
+      logger.deterministicIterationHeader(i, max);
       let allPassed = true;
       const entries: { command: string; exitCode: number; output: string }[] = [];
       for (const cmd of step.commands) {
-        if (verbose) console.log(`${C.deterministic}  $ ${cmd}${C.reset}`);
+        logger.deterministicCommand(cmd);
         const r = await $`${{ raw: cmd }}`.cwd(cwd).env(env).nothrow().quiet();
         const output = r.stdout.toString() + r.stderr.toString();
-        if (verbose && output.trim()) process.stdout.write(output);
+        logger.deterministicCommandOutput(output);
         lastOutput = output;
         entries.push({ command: cmd, exitCode: r.exitCode ?? 0, output });
         if (r.exitCode !== 0) {
@@ -529,20 +458,7 @@ export class AgentBuilder {
       }
       runLog.deterministicIteration(stepIndex, i, entries);
 
-      if (!verbose) {
-        // Build summary line: cmdName=exitCode ...
-        const cmdSummary = entries
-          .map((e) => {
-            // Use a short label derived from the command name
-            const label = e.command.trim().split(/\s+/)[0].replace(/.*\//, "");
-            return `${label}=${e.exitCode}`;
-          })
-          .join(" ");
-        process.stdout.write(
-          `[${this.name}] step ${stepIndex + 1}/${this.steps.length} (deterministic)\n`,
-        );
-        process.stdout.write(`[${this.name}]   iter ${i}/${max}: ${cmdSummary}\n`);
-      }
+      logger.deterministicQuietSummary(stepIndex, this.steps.length, i, max, entries);
 
       if (allPassed) return;
       if (step.loop && i < max) {
@@ -550,21 +466,11 @@ export class AgentBuilder {
           `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(-4000)}`,
         );
         const { systemPrompt, userPrompt } = fixer.resolve(repoRoot);
-        if (verbose) {
-          printInvocation(systemPrompt, userPrompt);
-        } else {
-          process.stdout.write(`[${this.name}]   fixer iter ${i}`);
-        }
+        logger.fixerStart(i, systemPrompt, userPrompt);
         const startTime = Date.now();
         const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
         const durationMs = Date.now() - startTime;
-        if (!verbose) {
-          const durationS = (durationMs / 1000).toFixed(1);
-          const tokIn = r.usage?.inputTokens ?? 0;
-          const tokOut = r.usage?.outputTokens ?? 0;
-          const status = r.exitCode === 0 ? "ok" : "fail";
-          process.stdout.write(` (${status}, ${durationS}s, ${tokIn}→${tokOut})\n`);
-        }
+        logger.fixerResult(durationMs, r.usage, r.exitCode);
         runLog.fixerInvocation(
           stepIndex,
           i,
@@ -616,27 +522,4 @@ function collectPostFixChecks(steps: Step[]): string[] {
     if (s.kind === "deterministic") return [...s.commands];
   }
   return [];
-}
-
-function banner(kind: keyof typeof C, text: string): void {
-  console.log(`\n${C[kind]}━━━ ${text} ━━━${C.reset}`);
-}
-
-function printInvocation(systemPrompt: string, userPrompt: string): void {
-  console.log(`${C.dim}┌─ system prompt ─────────────────────────────${C.reset}`);
-  console.log(
-    systemPrompt
-      .split("\n")
-      .map((l) => `${C.dim}│${C.reset} ${l}`)
-      .join("\n"),
-  );
-  console.log(`${C.dim}└─────────────────────────────────────────────${C.reset}`);
-  console.log(`${C.dim}┌─ user prompt ───────────────────────────────${C.reset}`);
-  console.log(
-    userPrompt
-      .split("\n")
-      .map((l) => `${C.dim}│${C.reset} ${l}`)
-      .join("\n"),
-  );
-  console.log(`${C.dim}└─────────────────────────────────────────────${C.reset}`);
 }
