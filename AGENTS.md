@@ -103,6 +103,26 @@ Per-run lifecycle:
 
 Adding a new default agent: create `packages/munchkins/agents/<name>/<name>-agent.ts` constructing an `AgentBuilder` and calling `registry.register(builder)`, then side-effect-import it from `packages/munchkins/src/index.ts`.
 
+### Selecting the agent CLI backend
+
+Every agent run shells out to a CLI. The default is `claude`; `codex` is available as an alternate backend. The selection is process-wide — one backend per run.
+
+Two ways to pick the backend, with this priority (flag wins on conflict):
+
+1. `--cli <claude|codex>` — flag on any registered agent subcommand.
+2. `MUNCHKINS_CLI=<claude|codex>` — environment variable.
+
+Examples:
+
+```sh
+bun run munchkins bug-fix --cli=codex --user-message=./bug.md
+MUNCHKINS_CLI=codex bun run munchkins bug-fix --user-message=./bug.md
+```
+
+Codex prerequisite: the `codex` CLI must be on `PATH` and authenticated (`codex login`) for `--cli=codex` to work. Failures surface from `Bun.spawn` and are not pre-validated.
+
+Cost tracking caveat: Codex's JSONL stream does not emit a per-call cost. Runs that include any Codex-backed call render the cost field as `—` instead of a dollar amount in the PASS line, run summary, and CHANGELOG entry. Token counts are still reported.
+
 ### Manual prerequisites (one-time GitHub setup, not commands)
 
 These cannot be verified by S10/S11/S12 until configured by an operator with repo admin rights:

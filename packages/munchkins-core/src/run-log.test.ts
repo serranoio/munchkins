@@ -40,6 +40,46 @@ describe("RunLog", () => {
     });
   });
 
+  describe("accumulateUsage / getCostUsd", () => {
+    test("sums costUsd when every contribution provides a value", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.0125,
+      });
+      log.accumulateUsage({
+        inputTokens: 4,
+        outputTokens: 2,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.0075,
+      });
+      expect(log.getCostUsd()).toBeCloseTo(0.02, 6);
+    });
+
+    test("returns undefined when any contribution lacks costUsd", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.01,
+      });
+      log.accumulateUsage({
+        inputTokens: 4,
+        outputTokens: 2,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        // costUsd intentionally omitted (Codex backend)
+      });
+      expect(log.getCostUsd()).toBeUndefined();
+    });
+  });
+
   describe("recordEvent", () => {
     test("appends a JSON line to events.jsonl", () => {
       const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo-task" });

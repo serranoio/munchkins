@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentBuilder } from "../builder/agent-builder.js";
 import { AgentRegistry } from "./registry.js";
 
-const ENV_KEYS = ["__MUNCHKINS_OPT_dryRun", "__MUNCHKINS_OPT_thinking", "__MUNCHKINS_OPT_verbose"];
+const ENV_KEYS = [
+  "__MUNCHKINS_OPT_dryRun",
+  "__MUNCHKINS_OPT_thinking",
+  "__MUNCHKINS_OPT_verbose",
+  "__MUNCHKINS_OPT_cli",
+];
 
 describe("AgentRegistry.cli()", () => {
   const saved: Record<string, string | undefined> = {};
@@ -21,7 +26,7 @@ describe("AgentRegistry.cli()", () => {
     }
   });
 
-  test("registers --thinking, --verbose, and --dry-run on each subcommand", () => {
+  test("registers --thinking, --verbose, --dry-run, and --cli on each subcommand", () => {
     const reg = new AgentRegistry();
     reg.register(new AgentBuilder("alpha", "first"));
     reg.register(new AgentBuilder("beta", "second"));
@@ -34,6 +39,7 @@ describe("AgentRegistry.cli()", () => {
       expect(longs).toContain("--thinking");
       expect(longs).toContain("--verbose");
       expect(longs).toContain("--dry-run");
+      expect(longs).toContain("--cli");
     }
   });
 
@@ -78,6 +84,34 @@ describe("AgentRegistry.cli()", () => {
 
     expect(observedThinking).toBe("true");
     expect(observedVerbose).toBeUndefined();
+  });
+
+  test("parsing --cli=codex sets __MUNCHKINS_OPT_cli before invoking run()", async () => {
+    const reg = new AgentRegistry();
+    const builder = new AgentBuilder("alpha");
+
+    let observed: string | undefined;
+    const originalExit = process.exit;
+    (process as { exit: (code?: number) => never }).exit = ((_code?: number) => {
+      throw new Error("__exit__");
+    }) as never;
+
+    (builder as unknown as { run: () => Promise<unknown> }).run = async () => {
+      observed = process.env.__MUNCHKINS_OPT_cli;
+      return { worktreePath: "", branch: "", succeeded: true };
+    };
+
+    reg.register(builder);
+
+    try {
+      await reg.cli().parseAsync(["node", "munchkins", "alpha", "--cli", "codex"]);
+    } catch (err) {
+      if ((err as Error).message !== "__exit__") throw err;
+    } finally {
+      process.exit = originalExit;
+    }
+
+    expect(observed).toBe("codex");
   });
 
   test("absence of --thinking leaves __MUNCHKINS_OPT_thinking unset", async () => {

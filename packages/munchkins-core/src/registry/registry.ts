@@ -56,6 +56,10 @@ export class AgentRegistry {
         "--verbose",
         "Highest of three verbosity levels (default → --thinking → --verbose). Prints full step-by-step prompts, command outputs, and streaming Claude output.",
       );
+      sub.option(
+        "--cli <cli>",
+        "Backend CLI: claude (default) or codex. Equivalent to env MUNCHKINS_CLI; flag wins on conflict.",
+      );
       for (const [flag, schema] of builder.options) {
         const spec = flagSpec(flag, schema);
         if (schema.required) {
@@ -70,6 +74,9 @@ export class AgentRegistry {
         if (rawOpts.dryRun) process.env[`${OPTION_ENV_PREFIX}dryRun`] = "true";
         if (rawOpts.thinking) process.env[`${OPTION_ENV_PREFIX}thinking`] = "true";
         if (rawOpts.verbose) process.env[`${OPTION_ENV_PREFIX}verbose`] = "true";
+        if (rawOpts.cli !== undefined) {
+          process.env[`${OPTION_ENV_PREFIX}cli`] = String(rawOpts.cli);
+        }
         for (const flag of builder.options.keys()) {
           const value = rawOpts[flag];
           if (value === undefined) continue;
