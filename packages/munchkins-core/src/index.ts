@@ -18,9 +18,9 @@ export {
   spawnClaude,
 } from "./builder/index.js";
 export {
-  integrateBranch,
   type IntegrateOptions,
   type IntegrateResult,
+  integrateBranch,
 } from "./integrate.js";
 export { AgentRegistry, registry } from "./registry/index.js";
 export { RunLog, type RunSummary } from "./run-log.js";

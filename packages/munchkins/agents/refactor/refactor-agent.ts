@@ -3,8 +3,8 @@ import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs
 import {
   DEFAULT_CHECKS,
   defaultFixer,
-  getAgentPromptsDir,
   GUIDELINES_PATH,
+  getAgentPromptsDir,
 } from "../_shared/presets.js";
 
 const PROMPTS = getAgentPromptsDir(import.meta.url);
