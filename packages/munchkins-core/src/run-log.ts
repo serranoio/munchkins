@@ -103,6 +103,31 @@ export class RunLog {
     this.markdown = markdown;
   }
 
+  private _writeClaudeCall(
+    prefix: string,
+    kind: "agent" | "summary" | "fixer",
+    systemPrompt: string,
+    userPrompt: string,
+    response: string,
+    exitCode: number,
+    durationMs: number,
+    extra: Record<string, unknown>,
+  ): void {
+    this.claudeCallCount += 1;
+    writeFileSync(join(this.dir, `${prefix}.system.md`), systemPrompt);
+    writeFileSync(join(this.dir, `${prefix}.user.md`), userPrompt);
+    writeFileSync(join(this.dir, `${prefix}.response.txt`), response);
+    this.writeEvent({
+      type: kind,
+      ...extra,
+      exitCode,
+      durationMs,
+      systemBytes: systemPrompt.length,
+      userBytes: userPrompt.length,
+      responseBytes: response.length,
+    });
+  }
+
   agentStep(
     stepIndex: number,
     systemPrompt: string,
@@ -112,20 +137,16 @@ export class RunLog {
     durationMs: number,
   ): void {
     this.agentStepCount += 1;
-    this.claudeCallCount += 1;
-    const prefix = `step-${pad(stepIndex + 1)}-agent`;
-    writeFileSync(join(this.dir, `${prefix}.system.md`), systemPrompt);
-    writeFileSync(join(this.dir, `${prefix}.user.md`), userPrompt);
-    writeFileSync(join(this.dir, `${prefix}.response.txt`), response);
-    this.writeEvent({
-      type: "agent",
-      stepIndex,
+    this._writeClaudeCall(
+      `step-${pad(stepIndex + 1)}-agent`,
+      "agent",
+      systemPrompt,
+      userPrompt,
+      response,
       exitCode,
       durationMs,
-      systemBytes: systemPrompt.length,
-      userBytes: userPrompt.length,
-      responseBytes: response.length,
-    });
+      { stepIndex },
+    );
   }
 
   summaryStep(
@@ -135,22 +156,18 @@ export class RunLog {
     exitCode: number,
     durationMs: number,
   ): void {
-    this.claudeCallCount += 1;
     // Use agentStepCount as the step index for the summary (it runs after all agent steps)
     const stepIndex = this.agentStepCount;
-    const prefix = `step-${pad(stepIndex + 1)}-summary`;
-    writeFileSync(join(this.dir, `${prefix}.system.md`), systemPrompt);
-    writeFileSync(join(this.dir, `${prefix}.user.md`), userPrompt);
-    writeFileSync(join(this.dir, `${prefix}.response.txt`), response);
-    this.writeEvent({
-      type: "summary",
-      stepIndex,
+    this._writeClaudeCall(
+      `step-${pad(stepIndex + 1)}-summary`,
+      "summary",
+      systemPrompt,
+      userPrompt,
+      response,
       exitCode,
       durationMs,
-      systemBytes: systemPrompt.length,
-      userBytes: userPrompt.length,
-      responseBytes: response.length,
-    });
+      { stepIndex },
+    );
   }
 
   deterministicIteration(
@@ -186,21 +203,16 @@ export class RunLog {
     durationMs: number,
   ): void {
     this.fixerInvocationCount += 1;
-    this.claudeCallCount += 1;
-    const prefix = `step-${pad(stepIndex + 1)}-fixer-iter-${pad(iteration)}`;
-    writeFileSync(join(this.dir, `${prefix}.system.md`), systemPrompt);
-    writeFileSync(join(this.dir, `${prefix}.user.md`), userPrompt);
-    writeFileSync(join(this.dir, `${prefix}.response.txt`), response);
-    this.writeEvent({
-      type: "fixer",
-      stepIndex,
-      iteration,
+    this._writeClaudeCall(
+      `step-${pad(stepIndex + 1)}-fixer-iter-${pad(iteration)}`,
+      "fixer",
+      systemPrompt,
+      userPrompt,
+      response,
       exitCode,
       durationMs,
-      systemBytes: systemPrompt.length,
-      userBytes: userPrompt.length,
-      responseBytes: response.length,
-    });
+      { stepIndex, iteration },
+    );
   }
 
   finalize(
