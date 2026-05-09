@@ -66,6 +66,11 @@ interface CodexStreamEvent {
   msg?: CodexStreamEventMsg;
 }
 
+interface StreamContext {
+  setFinalResult: (s: string) => void;
+  setUsage: (u: AgentUsage) => void;
+}
+
 export abstract class AgentCLI {
   abstract readonly name: AgentCLIName;
   abstract spawn(opts: SpawnOptions): Promise<SpawnResult>;
@@ -82,6 +87,70 @@ export abstract class AgentCLI {
           `Unknown CLI backend "${choice}". Expected "claude" or "codex". ` +
             `Set via --cli=<name> or MUNCHKINS_CLI=<name>.`,
         );
+    }
+  }
+
+  // Spawns `args`, decodes stdout as JSONL, and dispatches each parsed event to `handle`.
+  // Subclasses only differ in arg shape and event handling — the spawn/decode/exit/error
+  // scaffolding lives here.
+  protected async runJsonStream<E>(
+    opts: SpawnOptions,
+    args: string[],
+    handle: (event: E, ctx: StreamContext) => void,
+  ): Promise<SpawnResult> {
+    const startTime = Date.now();
+    let usage: AgentUsage | undefined;
+    let finalResult = "";
+    const chunks: string[] = [];
+
+    try {
+      const proc = Bun.spawn(args, {
+        cwd: opts.cwd,
+        stdout: "pipe",
+        stderr: "inherit",
+        signal: opts.abortSignal,
+      });
+
+      const decoder = new TextDecoder();
+      const ctx: StreamContext = {
+        setFinalResult: (s) => {
+          finalResult = s;
+        },
+        setUsage: (u) => {
+          usage = u;
+        },
+      };
+
+      for await (const chunk of proc.stdout) {
+        const text = decoder.decode(chunk);
+        chunks.push(text);
+
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          let event: E;
+          try {
+            event = JSON.parse(line) as E;
+          } catch {
+            continue;
+          }
+          handle(event, ctx);
+        }
+      }
+
+      const exitCode = await proc.exited;
+      return {
+        exitCode,
+        output: finalResult || chunks.join(""),
+        durationMs: Date.now() - startTime,
+        usage,
+      };
+    } catch (err) {
+      return {
+        exitCode: 1,
+        output: `Error spawning ${this.name}: ${err}`,
+        durationMs: Date.now() - startTime,
+        usage,
+      };
     }
   }
 }
@@ -105,80 +174,34 @@ export class ClaudeCLI extends AgentCLI {
   }
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    const startTime = Date.now();
-    const args = this.buildArgs(opts);
-
-    let output = "";
-    let exitCode = 0;
-    let usage: AgentUsage | undefined;
-
-    try {
-      const proc = Bun.spawn(args, {
-        cwd: opts.cwd,
-        stdout: "pipe",
-        stderr: "inherit",
-        signal: opts.abortSignal,
-      });
-
-      const decoder = new TextDecoder();
-      const chunks: string[] = [];
-      let finalResult = "";
-
-      for await (const chunk of proc.stdout) {
-        const text = decoder.decode(chunk);
-        chunks.push(text);
-
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          let event: ClaudeStreamEvent;
-          try {
-            event = JSON.parse(line) as ClaudeStreamEvent;
-          } catch {
-            continue;
-          }
-
-          if (event.type === "result") {
-            if (event.result) finalResult = event.result;
-            if (event.usage || event.total_cost_usd !== undefined) {
-              usage = {
-                inputTokens: event.usage?.input_tokens ?? 0,
-                outputTokens: event.usage?.output_tokens ?? 0,
-                cacheCreationInputTokens: event.usage?.cache_creation_input_tokens ?? 0,
-                cacheReadInputTokens: event.usage?.cache_read_input_tokens ?? 0,
-                costUsd: event.total_cost_usd ?? 0,
-              };
-            }
-          }
-
-          if (!opts.stream) continue;
-
-          if (event.type === "assistant" && event.message?.content) {
-            for (const block of event.message.content) {
-              if (block.type === "text" && block.text) {
-                process.stdout.write(block.text);
-              } else if (block.type === "tool_use" && block.name) {
-                process.stdout.write(`\n[Tool: ${block.name}]\n`);
-              }
-            }
-          } else if (event.type === "result" && event.result) {
-            process.stdout.write(`\n${event.result}\n`);
-          }
+    return this.runJsonStream<ClaudeStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
+      if (event.type === "result") {
+        if (event.result) ctx.setFinalResult(event.result);
+        if (event.usage || event.total_cost_usd !== undefined) {
+          ctx.setUsage({
+            inputTokens: event.usage?.input_tokens ?? 0,
+            outputTokens: event.usage?.output_tokens ?? 0,
+            cacheCreationInputTokens: event.usage?.cache_creation_input_tokens ?? 0,
+            cacheReadInputTokens: event.usage?.cache_read_input_tokens ?? 0,
+            costUsd: event.total_cost_usd ?? 0,
+          });
         }
       }
 
-      exitCode = await proc.exited;
-      output = finalResult || chunks.join("");
-    } catch (err) {
-      output = `Error spawning claude: ${err}`;
-      exitCode = 1;
-    }
+      if (!opts.stream) return;
 
-    return {
-      exitCode,
-      output,
-      durationMs: Date.now() - startTime,
-      usage,
-    };
+      if (event.type === "assistant" && event.message?.content) {
+        for (const block of event.message.content) {
+          if (block.type === "text" && block.text) {
+            process.stdout.write(block.text);
+          } else if (block.type === "tool_use" && block.name) {
+            process.stdout.write(`\n[Tool: ${block.name}]\n`);
+          }
+        }
+      } else if (event.type === "result" && event.result) {
+        process.stdout.write(`\n${event.result}\n`);
+      }
+    });
   }
 }
 
@@ -208,84 +231,36 @@ export class CodexCLI extends AgentCLI {
   }
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    const startTime = Date.now();
-    const args = this.buildArgs(opts);
+    return this.runJsonStream<CodexStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
+      const msg = event.msg;
+      if (!msg) return;
 
-    let output = "";
-    let exitCode = 0;
-    let usage: AgentUsage | undefined;
-
-    try {
-      const proc = Bun.spawn(args, {
-        cwd: opts.cwd,
-        stdout: "pipe",
-        stderr: "inherit",
-        signal: opts.abortSignal,
-      });
-
-      const decoder = new TextDecoder();
-      const chunks: string[] = [];
-      let finalResult = "";
-
-      for await (const chunk of proc.stdout) {
-        const text = decoder.decode(chunk);
-        chunks.push(text);
-
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          let event: CodexStreamEvent;
-          try {
-            event = JSON.parse(line) as CodexStreamEvent;
-          } catch {
-            continue;
-          }
-
-          const msg = event.msg;
-          if (!msg) continue;
-
-          if (msg.type === "agent_message" && typeof msg.message === "string") {
-            finalResult = msg.message;
-          } else if (msg.type === "task_complete" && typeof msg.last_agent_message === "string") {
-            finalResult = msg.last_agent_message;
-          } else if (msg.type === "token_count" && msg.info) {
-            const totals = msg.info.total_token_usage ?? msg.info.last_token_usage;
-            if (totals) {
-              const inputTokens = totals.input_tokens ?? 0;
-              const cached = totals.cached_input_tokens ?? 0;
-              usage = {
-                inputTokens,
-                outputTokens: totals.output_tokens ?? 0,
-                cacheCreationInputTokens: 0,
-                cacheReadInputTokens: cached,
-                // costUsd intentionally omitted — Codex JSONL does not emit cost.
-              };
-            }
-          }
-
-          if (!opts.stream) continue;
-
-          if (msg.type === "agent_message" && typeof msg.message === "string") {
-            process.stdout.write(`\n${msg.message}\n`);
-          } else if (msg.type === "agent_message_delta" && typeof msg.delta === "string") {
-            process.stdout.write(msg.delta);
-          } else if (msg.type === "exec_command_begin" && typeof msg.name === "string") {
-            process.stdout.write(`\n[Tool: ${msg.name}]\n`);
-          }
+      if (msg.type === "agent_message" && typeof msg.message === "string") {
+        ctx.setFinalResult(msg.message);
+      } else if (msg.type === "task_complete" && typeof msg.last_agent_message === "string") {
+        ctx.setFinalResult(msg.last_agent_message);
+      } else if (msg.type === "token_count" && msg.info) {
+        const totals = msg.info.total_token_usage ?? msg.info.last_token_usage;
+        if (totals) {
+          ctx.setUsage({
+            inputTokens: totals.input_tokens ?? 0,
+            outputTokens: totals.output_tokens ?? 0,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: totals.cached_input_tokens ?? 0,
+            // costUsd intentionally omitted — Codex JSONL does not emit cost.
+          });
         }
       }
 
-      exitCode = await proc.exited;
-      output = finalResult || chunks.join("");
-    } catch (err) {
-      output = `Error spawning codex: ${err}`;
-      exitCode = 1;
-    }
+      if (!opts.stream) return;
 
-    return {
-      exitCode,
-      output,
-      durationMs: Date.now() - startTime,
-      usage,
-    };
+      if (msg.type === "agent_message" && typeof msg.message === "string") {
+        process.stdout.write(`\n${msg.message}\n`);
+      } else if (msg.type === "agent_message_delta" && typeof msg.delta === "string") {
+        process.stdout.write(msg.delta);
+      } else if (msg.type === "exec_command_begin" && typeof msg.name === "string") {
+        process.stdout.write(`\n[Tool: ${msg.name}]\n`);
+      }
+    });
   }
 }
