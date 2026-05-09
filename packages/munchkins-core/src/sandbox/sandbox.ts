@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import type { AgentCLI } from "../builder/agent-cli.js";
+import { integrateBranch } from "../integrate.js";
 import { cleanupWorktree, createWorktree, deleteBranch } from "../worktree.js";
-import { integrateWorktree } from "./integrate.js";
 
 export interface IntegrateContext {
   /** Original goal text from the user-message; surfaces in the fixer's user prompt. */
@@ -76,8 +76,8 @@ export function gitWorktreeSandbox(): SandboxFactory {
           const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
             .text()
             .trim();
-          const result = await integrateWorktree({
-            worktreePath: path,
+          const result = await integrateBranch({
+            workdir: path,
             branch: currentBranch,
             repoRoot,
             baseBranch,

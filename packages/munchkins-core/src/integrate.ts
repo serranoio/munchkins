@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import type { AgentCLI } from "../builder/agent-cli.js";
+import type { AgentCLI } from "./builder/agent-cli.js";
 
 const MERGE_FIXER_SYSTEM_PROMPT = `You are a merge conflict resolver running inside a git rebase.
 
@@ -21,7 +21,8 @@ The user prompt names the conflicted files and includes the original goal of the
 const FIXER_DISALLOWED_TOOLS = ["Bash"];
 
 export interface IntegrateOptions {
-  worktreePath: string;
+  /** Directory where `branch` is checked out. May be a worktree or any other checkout. */
+  workdir: string;
   branch: string;
   repoRoot: string;
   baseBranch: string;
@@ -51,16 +52,23 @@ export type IntegrateResult =
   | { ok: false; reason: string; fixerIters: number };
 
 /**
- * Rebase `branch` onto `baseBranch` inside the worktree, optionally invoking the
- * fixer to resolve conflicts, then fast-forward `baseBranch` to the rebased tip.
+ * Rebase `branch` onto `baseBranch` inside `workdir`, optionally invoking the
+ * fixer to resolve conflicts, then fast-forward `baseBranch` to the rebased tip
+ * inside `repoRoot`.
  *
- * Contract: on success, the worktree is clean and `baseBranch` in the parent
- * repo points at the rebased tip. On failure, the rebase is aborted and the
- * worktree is left at its pre-rebase state for the operator to inspect.
+ * `workdir` and `repoRoot` are the same git repository in two checkouts —
+ * usually a worktree (workdir) and the main checkout (repoRoot), but any pair
+ * works as long as `repoRoot` has `baseBranch` checked out and `workdir` has
+ * `branch` checked out. Pass `workdir === repoRoot` only when you do not need
+ * the ff-merge step (TODO: a future flag will let callers skip step 3).
+ *
+ * Contract: on success, `workdir` is clean and `baseBranch` in `repoRoot`
+ * points at the rebased tip. On failure, the rebase is aborted and the workdir
+ * is left at its pre-rebase state for the operator to inspect.
  */
-export async function integrateWorktree(opts: IntegrateOptions): Promise<IntegrateResult> {
+export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
   const {
-    worktreePath,
+    workdir,
     branch,
     repoRoot,
     baseBranch,
@@ -76,16 +84,16 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
 
   // Step 1: rebase
   say(`integrate: rebase onto ${baseBranch}`);
-  let rebase = await $`git rebase ${baseBranch}`.cwd(worktreePath).nothrow().quiet();
+  let rebase = await $`git rebase ${baseBranch}`.cwd(workdir).nothrow().quiet();
 
   let fixerIters = 0;
 
   while (rebase.exitCode !== 0) {
-    const conflicted = await listConflictedFiles(worktreePath);
+    const conflicted = await listConflictedFiles(workdir);
 
     if (conflicted.length === 0) {
       // Rebase failed for a non-conflict reason (e.g. dirty worktree, broken HEAD)
-      await abortRebase(worktreePath);
+      await abortRebase(workdir);
       return {
         ok: false,
         reason: `rebase failed without conflict markers: ${rebase.stderr.toString().slice(-1000)}`,
@@ -94,7 +102,7 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
     }
 
     if (fixerIters >= maxFixerIter) {
-      await abortRebase(worktreePath);
+      await abortRebase(workdir);
       return {
         ok: false,
         reason: `merge-fixer exhausted ${maxFixerIter} iterations; conflicted: ${conflicted.join(", ")}`,
@@ -110,7 +118,7 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
     const r = await cli.spawn({
       systemPrompt: MERGE_FIXER_SYSTEM_PROMPT,
       userPrompt,
-      cwd: worktreePath,
+      cwd: workdir,
       disallowedTools: FIXER_DISALLOWED_TOOLS,
     });
     const durationMs = Date.now() - startTime;
@@ -124,7 +132,7 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
     });
 
     if (r.exitCode !== 0) {
-      await abortRebase(worktreePath);
+      await abortRebase(workdir);
       return {
         ok: false,
         reason: `merge-fixer CLI exited ${r.exitCode}`,
@@ -134,10 +142,10 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
 
     // The fixer should have removed conflict markers but not staged or committed.
     // Stage all edits and ask git to continue.
-    const stillConflicted = await listConflictedFiles(worktreePath);
+    const stillConflicted = await listConflictedFiles(workdir);
     if (stillConflicted.length === conflicted.length) {
       // Fixer didn't actually do anything; bail rather than spin
-      await abortRebase(worktreePath);
+      await abortRebase(workdir);
       return {
         ok: false,
         reason: `merge-fixer produced no changes; still conflicted: ${stillConflicted.join(", ")}`,
@@ -145,9 +153,9 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
       };
     }
 
-    await $`git add -A`.cwd(worktreePath).quiet();
+    await $`git add -A`.cwd(workdir).quiet();
     rebase = await $`git rebase --continue`
-      .cwd(worktreePath)
+      .cwd(workdir)
       .env({ ...process.env, GIT_EDITOR: "true" })
       .nothrow()
       .quiet();
@@ -157,7 +165,7 @@ export async function integrateWorktree(opts: IntegrateOptions): Promise<Integra
   if (fixerIters > 0 && postFixChecks.length > 0) {
     say(`integrate: re-running ${postFixChecks.length} check(s) after fixer`);
     for (const cmd of postFixChecks) {
-      const c = await $`${{ raw: cmd }}`.cwd(worktreePath).nothrow().quiet();
+      const c = await $`${{ raw: cmd }}`.cwd(workdir).nothrow().quiet();
       if (c.exitCode !== 0) {
         return {
           ok: false,
