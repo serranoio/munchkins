@@ -29,6 +29,21 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+function formatCommandEntries(
+  entries: { command: string; exitCode: number; output: string }[],
+): string {
+  return entries
+    .map(
+      (e) => `$ ${e.command}\n[exit ${e.exitCode}]\n${e.output.length > 0 ? `${e.output}\n` : ""}`,
+    )
+    .join("\n");
+}
+
+function resolveEnvPath(envValue: string | undefined, fallback: string, repoRoot: string): string {
+  if (!envValue) return fallback;
+  return isAbsolute(envValue) ? envValue : join(repoRoot, envValue);
+}
+
 function formatChangelogDate(ts: number): string {
   const d = new Date(ts);
   const yyyy = d.getFullYear();
@@ -74,12 +89,11 @@ export class RunLog {
     this.repoRoot = repoRoot;
     this.startedAt = Date.now();
     const suffix = `${this.startedAt}-${crypto.randomUUID().slice(0, 8)}`;
-    const envDir = process.env.MUNCHKINS_RUN_LOG_DIR;
-    const baseDir = envDir
-      ? isAbsolute(envDir)
-        ? envDir
-        : join(repoRoot, envDir)
-      : join(repoRoot, ".munchkins", "runs");
+    const baseDir = resolveEnvPath(
+      process.env.MUNCHKINS_RUN_LOG_DIR,
+      join(repoRoot, ".munchkins", "runs"),
+      repoRoot,
+    );
     this.dir = join(baseDir, `${agentName}-${suffix}`);
     mkdirSync(this.dir, { recursive: true });
     this.eventsPath = join(this.dir, "events.jsonl");
@@ -189,13 +203,7 @@ export class RunLog {
   ): void {
     this.deterministicCommandCount += entries.length;
     const prefix = `step-${pad(stepIndex + 1)}-det-iter-${pad(iteration)}`;
-    const body = entries
-      .map(
-        (e) =>
-          `$ ${e.command}\n[exit ${e.exitCode}]\n${e.output.length > 0 ? `${e.output}\n` : ""}`,
-      )
-      .join("\n");
-    writeFileSync(join(this.dir, `${prefix}.log`), body);
+    writeFileSync(join(this.dir, `${prefix}.log`), formatCommandEntries(entries));
     this.writeEvent({
       type: "deterministic",
       stepIndex,
@@ -233,13 +241,7 @@ export class RunLog {
     entries: { command: string; exitCode: number; output: string }[],
   ): void {
     const prefix = `step-${pad(stepIndex + 1)}-finalize-${kind}`;
-    const body = entries
-      .map(
-        (e) =>
-          `$ ${e.command}\n[exit ${e.exitCode}]\n${e.output.length > 0 ? `${e.output}\n` : ""}`,
-      )
-      .join("\n");
-    writeFileSync(join(this.dir, `${prefix}.log`), body);
+    writeFileSync(join(this.dir, `${prefix}.log`), formatCommandEntries(entries));
     this.writeEvent({
       type: "finalize",
       stepIndex,
@@ -289,12 +291,11 @@ export class RunLog {
 
   private _prependChangelog(endedAt: number, durationMs: number): void {
     // Concurrent runs may interleave; not handled.
-    const envPath = process.env.MUNCHKINS_CHANGELOG_PATH;
-    const changelogPath = envPath
-      ? isAbsolute(envPath)
-        ? envPath
-        : join(this.repoRoot, envPath)
-      : join(this.repoRoot, "CHANGELOG.md");
+    const changelogPath = resolveEnvPath(
+      process.env.MUNCHKINS_CHANGELOG_PATH,
+      join(this.repoRoot, "CHANGELOG.md"),
+      this.repoRoot,
+    );
     const durationSeconds = (durationMs / 1000).toFixed(1);
     const dateStr = formatChangelogDate(endedAt);
     const entry = [
