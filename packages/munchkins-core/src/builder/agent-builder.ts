@@ -3,7 +3,9 @@ import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { RunLog } from "../run-log.js";
 import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
+import { renameBranch } from "../worktree.js";
 import { Prompt } from "./prompt.js";
+import { deriveSlugDeterministic, getSlugWithRetry, type SlugResult } from "./slug.js";
 import { spawnClaude } from "./spawn-claude.js";
 
 const C = {
@@ -127,8 +129,22 @@ export class AgentBuilder {
     let cwd: string;
     let env: Record<string, string | undefined>;
 
-    if (this.sandbox) {
-      sandboxHandle = await this.sandbox(this.name, repoRoot);
+    const userMessageText = readUserMessage(repoRoot);
+
+    const sandboxPromise = this.sandbox
+      ? this.sandbox(this.name, repoRoot)
+      : Promise.resolve(undefined);
+    const slugPromise: Promise<SlugResult> = userMessageText
+      ? getSlugWithRetry(userMessageText)
+      : Promise.resolve({ slug: deriveSlugDeterministic(this.name) || this.name });
+
+    const [slugResult, sandboxResult] = await Promise.all([slugPromise, sandboxPromise]);
+    sandboxHandle = sandboxResult;
+
+    if (sandboxHandle) {
+      const finalBranch = `agent/${slugResult.slug}-${crypto.randomUUID().slice(0, 8)}`;
+      await renameBranch(sandboxHandle.env.BRANCH, finalBranch, repoRoot);
+      sandboxHandle.env.BRANCH = finalBranch;
       cwd = sandboxHandle.cwd;
       env = { ...process.env, ...sandboxHandle.env };
     } else {
@@ -136,7 +152,15 @@ export class AgentBuilder {
       env = { ...process.env, REPO_ROOT: repoRoot };
     }
 
-    const runLog = new RunLog(repoRoot, this.name);
+    const runLog = new RunLog(repoRoot, this.name, { slug: slugResult.slug });
+    if (slugResult.fallback) {
+      runLog.recordEvent({
+        type: "slug-fallback",
+        attempts: slugResult.fallback.attempts,
+        lastError: slugResult.fallback.lastError,
+        slug: slugResult.slug,
+      });
+    }
     const runStart = Date.now();
 
     if (verbose) {
@@ -591,14 +615,16 @@ export class AgentBuilder {
   }
 }
 
+function readUserMessage(repoRoot: string): string | undefined {
+  const raw = process.env.__MUNCHKINS_OPT_userMessage;
+  if (!raw) return undefined;
+  const candidate = isAbsolute(raw) ? raw : join(repoRoot, raw);
+  if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
+  return raw;
+}
+
 function resolveOriginalGoal(repoRoot: string): string {
-  const rawUserMessage = process.env.__MUNCHKINS_OPT_userMessage;
-  if (!rawUserMessage) return "(no user message)";
-  const candidate = isAbsolute(rawUserMessage) ? rawUserMessage : join(repoRoot, rawUserMessage);
-  if (existsSync(candidate)) {
-    return readFileSync(candidate, "utf-8");
-  }
-  return rawUserMessage;
+  return readUserMessage(repoRoot) ?? "(no user message)";
 }
 
 function buildSummaryWriterUserPrompt(originalGoal: string, diffSection: string[]): string {

@@ -17,6 +17,7 @@ import {
   getExpectedMockCallCount,
   getMockCallLog,
   getResponseFileNames,
+  getSlugOutput,
   setupAuditGuard,
   spawnClaudeMock,
 } from "./lib/mock-spawn-claude.js";
@@ -104,7 +105,7 @@ async function assertHappyPathCleanup(repoRoot: string): Promise<string | undefi
  * Assert that run-log artifacts were written into artifactDir by the framework.
  *
  * Expected layout (relative to artifactDir):
- *   bug-fix-<ts>-<uuid>/          ← exactly one subdir matching "bug-fix-*"
+ *   <slug>-<uuid>/                ← exactly one subdir; <slug> comes from getSlugOutput()
  *     summary.json                ← parseable; agent === "bug-fix"
  *     events.jsonl                ← non-empty
  *     step-01-agent.system.md
@@ -124,18 +125,19 @@ function assertArtifacts(): string | undefined {
     return `artifact dir does not exist: ${artifactDir}`;
   }
 
-  // Find subdirs matching "bug-fix-*"
+  // Find subdirs matching the slug-prefixed name produced by the slug pipeline.
+  const slugPrefix = `${getSlugOutput()}-`;
   let entries: string[];
   try {
     entries = readdirSync(artifactDir).filter((name) => {
-      return name.startsWith("bug-fix-") && statSync(join(artifactDir, name)).isDirectory();
+      return name.startsWith(slugPrefix) && statSync(join(artifactDir, name)).isDirectory();
     });
   } catch (err) {
     return `failed to read artifact dir: ${err instanceof Error ? err.message : String(err)}`;
   }
 
   if (entries.length === 0) {
-    return "no bug-fix-* run-log subdir found in artifact dir";
+    return `no ${slugPrefix}* run-log subdir found in artifact dir`;
   }
 
   // If somehow more than one, take the first lexicographically.

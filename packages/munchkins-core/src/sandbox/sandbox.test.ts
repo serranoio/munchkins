@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
+import { renameBranch } from "../worktree.js";
 import { gitWorktreeSandbox } from "./sandbox.js";
 
 interface Repo {
@@ -145,6 +146,27 @@ describe("gitWorktreeSandbox", () => {
     } finally {
       masterRepo.cleanup();
     }
+  });
+
+  test("renameBranch updates env.BRANCH so teardown merges and deletes the renamed branch", async () => {
+    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const originalBranch = handle.env.BRANCH;
+    const slugBranch = "agent/fix-login-redirect-bug-deadbeef";
+
+    await renameBranch(originalBranch, slugBranch, repo.path);
+    handle.env.BRANCH = slugBranch;
+
+    expect(handle.env.BRANCH).toBe(slugBranch);
+
+    await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
+    await handle.teardown("pass");
+
+    const branches = (await $`git branch --list 'agent/*'`.cwd(repo.path).quiet()).text().trim();
+    expect(branches).toBe("");
+
+    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
+    expect(log).toContain("agent commit");
+    expect(log).toContain(slugBranch);
   });
 
   test("concurrent sandboxes do not collide", async () => {
