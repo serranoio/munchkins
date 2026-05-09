@@ -15,16 +15,16 @@ upstream:
 
 Operators building munchkins agents have three pipeline-step primitives — `add()`, `addDeterministic()`, `finalize()` — plus a `summaryWriter()` phase. None composes Claude Code skills as steps. Skills already live at `~/.claude/skills/<name>/SKILL.md` (global) and `<cwd>/.claude/skills/<name>/SKILL.md` (project-local) and are invoked from any Claude session via `/<name> <args>`.
 
-This plan introduces **`addSkill(name, args?)`**: a thin builder primitive that hands a slash-command to a fresh headless `claude -p`, in the sandbox's `cwd`. Claude Code itself resolves the skill — munchkins reads no SKILL.md files, parses no frontmatter, and validates no skill names. Failure semantics match existing agent steps via a new typed error hierarchy. Side-effects only — no return value exposed to downstream steps in v1. RunLog records each addSkill spawn with per-step files and accumulated usage, matching the existing `runAgent` recording.
+This plan introduces **`addSkill(skill)`** and a new **`Skill`** primitive that mirrors `Prompt`'s shape: a chainable composable with `.withArgs(text)` and `.withArgsFromOption(name, decl?)`, late-bound via `.resolve(repoRoot)`. `addSkill` hands the resolved slash-command to a fresh headless `claude -p` in the sandbox's `cwd`. Claude Code itself resolves the skill — munchkins reads no SKILL.md files, parses no frontmatter, and validates no skill names. Operator-provided arguments piggy-back on the existing `--<flag>` auto-registration path that `add(prompt)` already uses, so a skill that takes runtime input requires no separate CLI wiring. A bare-string sugar form (`addSkill("noop-fixture")` / `addSkill("review-pr", "123")`) is preserved for the no-binding case. Failure semantics match existing agent steps via a new typed error hierarchy. Side-effects only — no return value exposed to downstream steps in v1. RunLog records each addSkill spawn with per-step files and accumulated usage, matching the existing `runAgent` recording.
 
 ## Goal And Non-Goals
 
-**Goal:** ship `addSkill(name, args?)` as a stable public API on `AgentBuilder` (in `packages/munchkins-core/src/builder/agent-builder.ts`), with happy-path coverage in the existing scenario harness and a documented manual-verification procedure for non-happy-path behaviors.
+**Goal:** ship `addSkill(skill)` and a Prompt-symmetric `Skill` class (in `packages/munchkins-core/src/builder/skill.ts`) as a stable public API on `AgentBuilder` (in `packages/munchkins-core/src/builder/agent-builder.ts`), with happy-path coverage in the existing scenario harness and a documented manual-verification procedure for non-happy-path behaviors. The bare-string call form `addSkill(name, args?)` is supported as sugar over the `Skill` constructor.
 
 **Non-goals (v1):**
 
 - Skill output capture / structured return value
-- Structured (object) arguments
+- Structured (object-shaped) arguments — `Skill` arguments are flat strings, optionally bound to CLI options. Multi-key object arguments are deferred.
 - Skill discovery / `listSkills()`
 - Skill-aware fixers in deterministic loops
 - Per-skill-step `--model`, `--max-budget-usd`, `--allowed-tools` overrides
@@ -60,21 +60,22 @@ Carried verbatim from `technology-decisions.md`:
 
 | ID  | Decision                                                                                                                              |
 |-----|---------------------------------------------------------------------------------------------------------------------------------------|
-| D1  | Method name: `addSkill(name: string, args?: string)`                                                                                  |
-| D2  | New `Step` variant `kind: "skill"` carrying `{ name, args? }`                                                                          |
-| D3  | Reuse `spawnClaude` directly. User prompt = `\`/${name}${args ? " " + args : ""}\``; `systemPrompt = ""`; `cwd = sandbox.cwd`; `stream = true` |
-| D4  | No munchkins-side escaping or validation of `args`. Operator owns the string.                                                         |
+| D1  | Method signature: `addSkill(skill: string \| Skill, args?: string): this`. Bare-string form is sugar that constructs a `Skill` internally. |
+| D2  | New `Step` variant `kind: "skill"` carrying `{ skill: Skill }`. The `Skill` instance owns the name and the late-bound argument fragments. |
+| D3  | Reuse `spawnClaude` directly. `Skill.resolve(repoRoot)` returns `{ userPrompt }`; pass with `systemPrompt = ""`, `cwd = sandbox.cwd`, `stream = true`. |
+| D4  | No munchkins-side escaping or validation of resolved arguments. Operator owns the string content.                                     |
 | D5  | New typed error hierarchy: `StepError`, `AgentStepError`, `SkillStepError`. Existing `runAgent` failure path retro-fitted to throw `AgentStepError`. addSkill throws `SkillStepError`. |
 | D6  | Reuse existing `"agent"` banner kind. No distinct `"skill"` banner.                                                                   |
 | D7  | Mock-log enrichment = inline flat fields `{ systemPrompt, userPrompt, cwd }` on `MockCallEntry`.                                      |
 | D8  | Moot — no second test runner introduced.                                                                                              |
 | D9  | No automated coverage for S2–S7. Code review + manual verification only.                                                              |
 | D10 | Moot — no unit tests.                                                                                                                 |
-| D11 | `args?: string` (single optional string).                                                                                             |
-| D12 | `addSkill` is a method on `AgentBuilder`. Error classes re-exported from `src/builder/index.ts` and `src/index.ts`.                  |
+| D11 | `Skill` mirrors `Prompt`'s shape: chainable `.withArgs(text)` and `.withArgsFromOption(optionName, declaration?)`; `resolve(repoRoot)` returns `{ userPrompt }`. Multiple fragments concatenate space-separated to form the final args string. CLI-option-bound fragments auto-register on `AgentBuilder` via the same path `add(prompt)` already uses. |
+| D12 | `addSkill` is a method on `AgentBuilder`. `Skill` class plus error classes re-exported from `src/builder/index.ts` and `src/index.ts`. |
 | D13 | No CI command changes.                                                                                                                |
 | D14 | RunLog participation via new `runLog.skillStep(stepIndex, name, userPrompt, response, exitCode, durationMs)` method.                  |
 | D15 | Boundary clean — no harness leakage into production contract.                                                                         |
+| D16 | Option auto-registration is shared between `add(prompt)` and `addSkill(skill)`. Extract the loop in `add()` into a private helper `autoDeclareOptions(fragments)` and call it from both sites. |
 
 ## Vertical Slices
 
@@ -88,7 +89,52 @@ This slice ships everything needed to verify S1 in CI on merge.
 
 **Scope (production code in `packages/munchkins-core/src/`):**
 
-1. In `builder/agent-builder.ts`:
+1. **New file `builder/skill.ts`** — mirrors `builder/prompt.ts`:
+   ```ts
+   import { existsSync, readFileSync } from "node:fs";
+   import { isAbsolute, join } from "node:path";
+   import { type Fragment, OPTION_ENV_PREFIX, type OptionDeclaration } from "./prompt.js";
+
+   export class Skill {
+     readonly name: string;
+     private _fragments: Fragment[] = [];
+
+     constructor(name: string) { this.name = name; }
+
+     withArgs(text: string): this {
+       this._fragments.push({ kind: "text", text });
+       return this;
+     }
+     withArgsFromOption(optionName: string, declaration?: OptionDeclaration): this {
+       this._fragments.push({ kind: "input-from-option", optionName, declaration });
+       return this;
+     }
+     get fragments(): readonly Fragment[] { return this._fragments; }
+
+     resolve(repoRoot: string): { userPrompt: string } {
+       const abs = (p: string) => (isAbsolute(p) ? p : join(repoRoot, p));
+       const args = this._fragments
+         .map((f) => {
+           if (f.kind === "text") return f.text;
+           const value = process.env[`${OPTION_ENV_PREFIX}${f.optionName}`];
+           if (!value) {
+             throw new Error(
+               `Skill: option "${f.optionName}" not provided (env var ${OPTION_ENV_PREFIX}${f.optionName} not set)`,
+             );
+           }
+           const candidate = abs(value);
+           if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
+           return value;
+         })
+         .join(" ")
+         .trim();
+       return { userPrompt: args ? `/${this.name} ${args}` : `/${this.name}` };
+     }
+   }
+   ```
+   Note: `Fragment`, `OptionDeclaration`, and `OPTION_ENV_PREFIX` are reused from `prompt.ts` — `Skill` does NOT redeclare them. This is the symmetry: a `Skill` is a `Prompt` minus system prompts plus a slash-command-prefix.
+
+2. In `builder/agent-builder.ts`:
    - Add the typed error classes at module scope:
      ```ts
      export class StepError extends Error {
@@ -103,22 +149,48 @@ This slice ships everything needed to verify S1 in CI on merge.
        }
      }
      ```
-   - Add `SkillStep` type variant: `{ kind: "skill"; name: string; args?: string }`.
+   - Add `SkillStep` type variant: `{ kind: "skill"; skill: Skill }`.
    - Extend the `Step` union: `Step = AgentStep | DeterministicStep | SkillStep | FinalizeStep`.
-   - Add the `addSkill(name: string, args?: string): this` method on `AgentBuilder` (peer of `add` / `addDeterministic`).
+   - Extract the option auto-registration loop from `add(prompt)` into a private helper:
+     ```ts
+     private autoDeclareOptions(fragments: readonly Fragment[]): void {
+       for (const f of fragments) {
+         if (f.kind !== "input-from-option" || !f.declaration) continue;
+         if (this.options.has(f.optionName)) continue;
+         this.options.set(f.optionName, {
+           type: "string",
+           required: f.declaration.required ?? false,
+           description: f.declaration.description,
+           default: f.declaration.default,
+         });
+       }
+     }
+     ```
+     Update `add(prompt)` to call `this.autoDeclareOptions(prompt.fragments)`.
+   - Add the `addSkill(skill: string | Skill, args?: string): this` method (peer of `add` / `addDeterministic`):
+     ```ts
+     addSkill(skill: string | Skill, args?: string): this {
+       const skillObj = typeof skill === "string"
+         ? (args !== undefined ? new Skill(skill).withArgs(args) : new Skill(skill))
+         : skill;
+       this.steps.push({ kind: "skill", skill: skillObj });
+       this.autoDeclareOptions(skillObj.fragments);
+       return this;
+     }
+     ```
    - Add a `runSkill(step, cwd, repoRoot, runLog, stepIndex)` private method:
      ```ts
      private async runSkill(
        step: SkillStep, cwd: string, repoRoot: string, runLog: RunLog, stepIndex: number,
      ): Promise<void> {
-       const userPrompt = step.args ? `/${step.name} ${step.args}` : `/${step.name}`
+       const { userPrompt } = step.skill.resolve(repoRoot)
        printInvocation("", userPrompt)
        const startTime = Date.now()
        const r = await spawnClaude({ systemPrompt: "", userPrompt, cwd, stream: true })
        const durationMs = Date.now() - startTime
        runLog.accumulateUsage(r.usage)
-       runLog.skillStep(stepIndex, step.name, userPrompt, r.output, r.exitCode, durationMs)
-       if (r.exitCode !== 0) throw new SkillStepError(step.name, r.exitCode)
+       runLog.skillStep(stepIndex, step.skill.name, userPrompt, r.output, r.exitCode, durationMs)
+       if (r.exitCode !== 0) throw new SkillStepError(step.skill.name, r.exitCode)
      }
      ```
    - Extend the runner's switch in `run()`:
@@ -129,18 +201,19 @@ This slice ships everything needed to verify S1 in CI on merge.
      }
      ```
    - Retro-fit `runAgent`'s failure path: replace `throw new Error(\`agent step failed (exit ${r.exitCode})\`)` with `throw new AgentStepError(r.exitCode)`. The message string is preserved verbatim.
-   - Extend the `describe()` dry-run path with a `kind: "skill"` branch that prints the constructed slash-command user prompt.
+   - Extend the `describe()` dry-run path with a `kind: "skill"` branch that prints the constructed slash-command user prompt (use `step.skill.resolve(repoRoot)` so option-bound fragments are reflected in the dry-run preview).
 
-2. In `run-log.ts`:
+3. In `run-log.ts`:
    - Add `skillStep(stepIndex: number, name: string, userPrompt: string, response: string, exitCode: number, durationMs: number)` method. Writes `step-NN-skill.user.md` and `step-NN-skill.response.txt`. Records an events.jsonl entry of `{ type: "skill", stepIndex, name, exitCode, durationMs, userBytes, responseBytes }`. Increments `claudeCallCount`.
 
-3. In `builder/index.ts`:
+4. In `builder/index.ts`:
+   - Export `Skill` (from `./skill.js`).
    - Export `StepError`, `AgentStepError`, `SkillStepError`.
 
-4. In `index.ts` (the package's top-level barrel):
-   - Re-export the three error classes.
+5. In `index.ts` (the package's top-level barrel):
+   - Re-export `Skill` and the three error classes.
 
-5. **No changes** to `packages/munchkins/agents/...`, the Prompt API, `spawn-claude.ts`, sandbox code, registry, CLI, or any default agent. The production bugfix-agent and refactor-agent are deliberately untouched to keep the harness boundary clean.
+6. **No changes** to `packages/munchkins/agents/...`, the Prompt API, `spawn-claude.ts`, sandbox code, registry, CLI, or any default agent. The production bugfix-agent and refactor-agent are deliberately untouched to keep the harness boundary clean.
 
 **Scope (harness code in `scenarios/`):**
 
@@ -152,19 +225,27 @@ This slice ships everything needed to verify S1 in CI on merge.
    - JSON schema's `mockCallLog` entry type gains the three fields.
 
 8. In `scenarios/index.ts`:
-   - After the existing `agentResult.succeeded` check, add a second builder run:
+   - After the existing `agentResult.succeeded` check, add a second builder run that exercises **both** call forms — bare-string sugar AND the explicit `Skill` object — so D1 and D11 are both covered by the scenario:
      ```ts
-     const { AgentBuilder, gitWorktreeSandbox } = await import("@serranolabs.io/munchkins-core")
-     const { defaultSummaryWriter } = await import("@serranolabs.io/munchkins/agents/_shared/presets")
-     // (or build a minimal summary writer inline if the import path doesn't exist)
+     const { AgentBuilder, gitWorktreeSandbox, Skill } = await import("@serranolabs.io/munchkins-core")
+     // Bare-string form (D1 sugar):
      const skillBuilder = new AgentBuilder("addskill-coverage", "Harness addSkill coverage", gitWorktreeSandbox())
        .addSkill("noop-fixture")
      const skillResult = await skillBuilder.run()
      if (!skillResult.succeeded) {
        return { /* fail with phase: "execution" */ }
      }
+     // Skill-object form with literal args (D11 — proves resolve() shapes the prompt correctly):
+     const skillObjBuilder = new AgentBuilder("addskill-coverage-obj", "Harness addSkill object form", gitWorktreeSandbox())
+       .addSkill(new Skill("noop-fixture").withArgs("hello"))
+     const skillObjResult = await skillObjBuilder.run()
+     if (!skillObjResult.succeeded) {
+       return { /* fail with phase: "execution" */ }
+     }
      ```
-   - Add a third audit assertion: walk `mockCallLog`, find at least one entry whose `userPrompt === "/noop-fixture"` and `systemPrompt === ""`. Fail the scenario otherwise.
+   - Extend the audit assertions: walk `mockCallLog`, find one entry whose `userPrompt === "/noop-fixture"` and `systemPrompt === ""` (bare-string form), AND one whose `userPrompt === "/noop-fixture hello"` and `systemPrompt === ""` (Skill-object form). Fail the scenario otherwise.
+   - The fixture `mock-claude-responses/` directory grows by **two** files (one per builder run). Naming: `99-noop-skill-fixture.json` and `9a-noop-skill-fixture-args.json` — both sort after bugfix-agent responses; the second sorts after the first.
+   - Option-bound args are exercised in Slice 2 (manual), not the harness — the scenario harness has no CLI invocation surface to set the env var, so option-binding is verified by manual run instead of by mock.
    - The cleanup audit (`assertHappyPathCleanup`) automatically extends because it walks `getResponseFileNames()` to verify markers — adding the new response file picks up its marker check.
 
 9. In `scenarios/fixtures/bugfix-agent-e2e/mock-claude-responses/`:
@@ -189,16 +270,21 @@ This slice ships everything needed to verify S1 in CI on merge.
 
 **Procedure** (mirrors `scenario-testing-strategy.md` Manual Verification Subsections):
 
-1. Author a project-local skill at `<repo-root>/.claude/skills/manual-test-noop/SKILL.md` whose body says: "Reply with the exact string `MANUAL_TEST_NOOP_OK` and do nothing else."
+1. Author a project-local skill at `<repo-root>/.claude/skills/manual-test-noop/SKILL.md` whose body says: "Reply with the exact string `MANUAL_TEST_NOOP_OK` and do nothing else, then echo any args you received."
 
-2. Build an ad-hoc agent registered into the registry (script under `examples/manual-addskill-test.ts` or a temporary registration file):
+2. Build an ad-hoc agent registered into the registry (script under `examples/manual-addskill-test.ts` or a temporary registration file). Cover **all three** call surfaces — bare-string, `Skill`-object with literal args, `Skill`-object with option-bound args — so D1 + D11 + D16 are all live-verified:
    ```ts
-   import { AgentBuilder, gitWorktreeSandbox, registry } from "@serranolabs.io/munchkins-core"
+   import { AgentBuilder, gitWorktreeSandbox, registry, Skill } from "@serranolabs.io/munchkins-core"
    const builder = new AgentBuilder("manual-addskill-test", "Manual addSkill verification", gitWorktreeSandbox())
+     // bare-string form
      .addSkill("manual-test-noop")
+     // Skill-object with literal args
+     .addSkill(new Skill("manual-test-noop").withArgs("literal-args-hello"))
+     // Skill-object with CLI-option-bound args (auto-registers --pr on the agent)
+     .addSkill(new Skill("manual-test-noop").withArgsFromOption("pr", { required: true, description: "PR number" }))
    registry.register(builder)
    ```
-   Run via `bun run packages/munchkins/src/index.ts manual-addskill-test`.
+   Run via `bun run packages/munchkins/src/index.ts manual-addskill-test --pr 123`. Confirm `--pr` appears in the help text — that proves option auto-registration via `addSkill` is working.
 
 3. Confirm:
    - Banner sequence renders.
@@ -210,6 +296,7 @@ This slice ships everything needed to verify S1 in CI on merge.
 
 4. Repeat with extra checks (covers S2/S3/S4/S5 manually):
    - **S2 multi-word args:** `addSkill("manual-test-noop", "first arg with spaces and a 'quoted phrase'")`. Update the noop skill body to echo the args back, verify args arrive intact.
+   - **S2-symmetry option-bound args:** verify the third call form above resolves at run-time — the resolved user prompt for that step should be `/manual-test-noop 123` (the value of `--pr`), and missing the flag should fail loudly with a clear "option not provided" error. This is the new symmetry-relevant check.
    - **S3 project-local resolution:** confirm step 1's skill resolved without falling through to a global skill.
    - **S4 plugin-namespaced (skip if no plugin available):** `addSkill("plugin-name:skill-name")`.
    - **S5 failure path:** author a deliberately-failing skill body that causes `claude -p` to exit non-zero; confirm `SkillStepError` thrown, sandbox preserved at the printed path.
@@ -218,6 +305,10 @@ This slice ships everything needed to verify S1 in CI on merge.
    ````
    ### Manual addSkill verification
    - S1-live: PASS — output included `MANUAL_TEST_NOOP_OK`, exit 0
+   - Bare-string form: PASS — `/manual-test-noop` resolved
+   - Skill-object literal args: PASS — `/manual-test-noop literal-args-hello` resolved
+   - Skill-object option-bound args: PASS — `--pr 123` auto-registered, resolved to `/manual-test-noop 123`
+   - Missing required option: PASS — clear "option not provided" error
    - S2 multi-arg: PASS — args echoed verbatim
    - S3 project-local: PASS — resolved without global fallback
    - S4 plugin-namespaced: SKIPPED — no plugin available
@@ -242,7 +333,12 @@ Slice 1 (primitive + errors + RunLog + harness coverage)  ──>  Slice 2 (manu
 
 None within this plan. addSkill is small enough that splitting Slice 1 between agents would create more coordination cost than time saved.
 
-Within Slice 1, the production-code work (`packages/munchkins-core/src/builder/`, `packages/munchkins-core/src/run-log.ts`) and the harness work (`scenarios/`) touch disjoint files and could in principle be split — but the harness work depends on the production `addSkill` method and `runLog.skillStep` existing for its second-builder run to compile, so even split work has to land in commit order.
+Within Slice 1, the production-code work splits into two disjoint pieces that could ship in independent commits before the harness work:
+
+1. `builder/skill.ts` is a brand-new file. Its only dependency is `prompt.ts`'s `Fragment`, `OptionDeclaration`, and `OPTION_ENV_PREFIX` exports — already present.
+2. The `agent-builder.ts` + `run-log.ts` changes (typed errors, `addSkill` method, `autoDeclareOptions` extraction, runner switch, `runLog.skillStep`) depend on `skill.ts` existing.
+
+The harness work (`scenarios/`) depends on both production pieces. Even a parallel split has to land in commit order: `skill.ts` → `agent-builder.ts`/`run-log.ts` → `scenarios/`.
 
 **Adjacent parallelism (out of scope for this plan):** the companion plan-funnel artifact set for the `hitl` feature at `docs/pages/internal/hitl/` is independent of addSkill and can be executed in parallel by a separate agent.
 
@@ -264,12 +360,16 @@ Within Slice 1, the production-code work (`packages/munchkins-core/src/builder/`
 
 8. **RunLog summary changes.** Adding `skillStep` recording means `RunSummary` may show `agentSteps` separately from skill calls. Existing consumers of `summary.json` should be re-read; if any external tooling counts `totalClaudeCalls`, that count now includes skill calls (which is correct — they ARE Claude calls). Document this in the slice's commit message.
 
+9. **Skill ↔ Prompt symmetry drift.** `Skill` reuses `Fragment`, `OptionDeclaration`, and `OPTION_ENV_PREFIX` from `prompt.ts`. If a future refactor changes the fragment shape or option-binding semantics in `Prompt`, `Skill` must move with it — the two are intentionally coupled. **Mitigation:** the symmetry is enforced by reusing `prompt.ts`'s exports verbatim, not by duplicating the types. Any future divergence (e.g. typed-fragment kinds for tool calls or structured args) should be considered for both classes simultaneously, or fork them deliberately with a recorded technology decision.
+
+10. **Argument fragment join semantics.** `Skill.resolve()` joins multiple fragments with a single space. Operators chaining `.withArgs("a").withArgs("b")` get `/foo a b`. If a fragment's resolved value contains spaces, those spaces are preserved verbatim (e.g. `withArgs("hello world")` → `/foo hello world`). This matches how operators write slash commands by hand and matches how `Prompt` joins user-message fragments (with `\n\n`). Document this in the public surface jsdoc.
+
 ## Execution Notes
 
-- **Slice 1 commit messages** (recommend split into two commits inside the same PR):
-  - `feat(core): add addSkill primitive + typed error hierarchy + RunLog skillStep` — production code only.
-  - `feat(scenarios): extend bugfix-agent-e2e with addSkill mini-pipeline + audit-log enrichment — satisfies S1` — harness only.
-  Keeping them as separate commits makes the diff easier to review (production change is reviewable in isolation) but they ship in the same PR because Slice 1's verification depends on both.
+- **Slice 1 commit messages** (recommend three commits inside the same PR — easier review than a single mega-commit):
+  - `feat(core): add Skill builder primitive — Prompt-symmetric, slash-command-shaped` — `builder/skill.ts` only.
+  - `feat(core): add addSkill + typed error hierarchy + RunLog skillStep` — `agent-builder.ts`, `run-log.ts`, barrel re-exports.
+  - `feat(scenarios): extend bugfix-agent-e2e with addSkill mini-pipeline (bare-string + Skill-object) — satisfies S1` — harness only.
 
 - **Slice 2 is not a commit** — it is a PR-description block.
 
@@ -282,8 +382,8 @@ Within Slice 1, the production-code work (`packages/munchkins-core/src/builder/`
 - **No new CLI subcommand.** Per D12, `addSkill` is a method on `AgentBuilder`. Operators expose skills via their own agents registered into the registry.
 
 - **Re-export checklist:**
-  - In `packages/munchkins-core/src/builder/index.ts`: add `StepError`, `AgentStepError`, `SkillStepError`.
+  - In `packages/munchkins-core/src/builder/index.ts`: add `Skill`, `StepError`, `AgentStepError`, `SkillStepError`.
   - In `packages/munchkins-core/src/index.ts`: re-export the same.
-  - Do NOT add `addSkill` (it's a method); do NOT add `SkillStep` (internal type); do NOT add `runSkill` (private).
+  - Do NOT add `addSkill` (it's a method); do NOT add `SkillStep` (internal type); do NOT add `runSkill` (private); do NOT re-export `Fragment`/`OptionDeclaration`/`OPTION_ENV_PREFIX` from `skill.ts` (they live in `prompt.ts` and are already exported from there).
 
 - **No effort sizing in this plan** per CLAUDE.md "no effort estimates" rule.
