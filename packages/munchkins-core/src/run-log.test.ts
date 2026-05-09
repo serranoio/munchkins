@@ -144,4 +144,19 @@ describe("RunLog", () => {
       expect(log.prependChangelogIn(tmpRepo)).toBeUndefined();
     });
   });
+
+  describe("getAgentSummaryMarkdown / getAgentSummaryCommitMessage", () => {
+    test("return undefined before setAgentSummary is called", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      expect(log.getAgentSummaryMarkdown()).toBeUndefined();
+      expect(log.getAgentSummaryCommitMessage()).toBeUndefined();
+    });
+
+    test("return the values passed to setAgentSummary", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.setAgentSummary("feat: do a thing", "Did a thing.");
+      expect(log.getAgentSummaryCommitMessage()).toBe("feat: do a thing");
+      expect(log.getAgentSummaryMarkdown()).toBe("Did a thing.");
+    });
+  });
 });
