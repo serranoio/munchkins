@@ -131,19 +131,41 @@ export async function rebaseAndResolve(
       return { ok: false, reason: `merge-fixer CLI exited ${r.exitCode}`, fixerIters };
     }
 
-    // The fixer should have removed conflict markers but not staged or committed.
-    // Stage all edits and ask git to continue.
-    const stillConflicted = await listConflictedFiles(workdir);
-    if (stillConflicted.length === conflicted.length) {
+    // Detect leftover markers via working-tree content (`git diff --check`).
+    // The previous index-based check was structurally broken: editing a file
+    // doesn't remove its unmerged index entry, so the old check could never
+    // observe the fixer's edits as progress.
+    const stillMarked = new Set(await filesWithLeftoverMarkers(workdir));
+
+    // Bail early if the fixer wrote markers to files outside the conflict set.
+    const stray = [...stillMarked].filter((f) => !conflicted.includes(f));
+    if (stray.length > 0) {
       await abortRebase(workdir);
       return {
         ok: false,
-        reason: `merge-fixer produced no changes; still conflicted: ${stillConflicted.join(", ")}`,
+        reason: `merge-fixer wrote markers to files outside the conflict set: ${stray.join(", ")}`,
         fixerIters,
       };
     }
 
-    await $`git add -A`.cwd(workdir).quiet();
+    // Bail if the fixer made zero forward progress.
+    if (stillMarked.size === conflicted.length) {
+      await abortRebase(workdir);
+      return {
+        ok: false,
+        reason: `merge-fixer left markers in every conflicted file: ${[...stillMarked].join(", ")}`,
+        fixerIters,
+      };
+    }
+
+    // Stage only the files we've verified clean. Files still carrying markers
+    // keep their unmerged index entries; `git rebase --continue` will fail and
+    // the outer loop re-invokes the fixer on the remaining unresolved subset.
+    for (const f of conflicted) {
+      if (!stillMarked.has(f)) {
+        await $`git add ${f}`.cwd(workdir).quiet();
+      }
+    }
     rebase = await $`git rebase --continue`
       .cwd(workdir)
       .env({ ...process.env, GIT_EDITOR: "true" })
@@ -213,6 +235,21 @@ async function listConflictedFiles(cwd: string): Promise<string[]> {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+async function filesWithLeftoverMarkers(workdir: string): Promise<string[]> {
+  const r = await $`git diff --check`.cwd(workdir).nothrow().quiet();
+  if (r.exitCode === 0) return [];
+  const files = new Set<string>();
+  for (const line of r.stdout.toString().split("\n")) {
+    // git diff --check emits both whitespace and conflict-marker warnings;
+    // filter to conflict markers so a stray trailing-whitespace warning
+    // doesn't masquerade as a leftover marker.
+    if (!line.includes("conflict marker")) continue;
+    const colon = line.indexOf(":");
+    if (colon > 0) files.add(line.slice(0, colon));
+  }
+  return [...files];
 }
 
 async function abortRebase(cwd: string): Promise<void> {
