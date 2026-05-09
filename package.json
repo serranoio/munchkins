@@ -17,7 +17,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "build": "turbo run build",
-    "munchkins": "bun run packages/munchkins/src/index.ts",
+    "munchkins": "MUNCHKINS_CHANGELOG_PATH=docs/pages/changelog.md bun run packages/munchkins/src/index.ts",
     "scenario": "bun run scenarios/index.ts",
     "docs:dev": "turbo run dev --filter=docs",
     "docs:build": "turbo run build --filter=docs"

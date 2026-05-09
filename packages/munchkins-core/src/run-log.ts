@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { SpawnClaudeUsage } from "./builder/spawn-claude.js";
 
 export interface RunSummary {
@@ -265,7 +265,12 @@ export class RunLog {
 
   private _prependChangelog(endedAt: number, durationMs: number): void {
     // Concurrent runs may interleave; not handled.
-    const changelogPath = join(this.repoRoot, "CHANGELOG.md");
+    const envPath = process.env.MUNCHKINS_CHANGELOG_PATH;
+    const changelogPath = envPath
+      ? isAbsolute(envPath)
+        ? envPath
+        : join(this.repoRoot, envPath)
+      : join(this.repoRoot, "CHANGELOG.md");
     const durationSeconds = (durationMs / 1000).toFixed(1);
     const dateStr = formatChangelogDate(endedAt);
     const entry = [
@@ -279,6 +284,7 @@ export class RunLog {
     ].join("\n");
 
     if (!existsSync(changelogPath)) {
+      mkdirSync(dirname(changelogPath), { recursive: true });
       writeFileSync(changelogPath, `${CHANGELOG_HEADER}${entry}`);
       return;
     }

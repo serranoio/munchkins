@@ -14,6 +14,28 @@ export default defineConfig({
   },
   themeConfig: {
     socialLinks: [],
-    nav: [],
+    nav: [
+      { text: "Changelog", link: "/changelog" },
+      ...(isPublicBuild
+        ? []
+        : [
+            {
+              text: "Internal",
+              items: [
+                { text: "Diagnosis", link: "/internal/diagnosis" },
+                { text: "PRD", link: "/internal/prd" },
+                {
+                  text: "Scenario testing strategy",
+                  link: "/internal/scenario-testing-strategy",
+                },
+                {
+                  text: "Technology decisions",
+                  link: "/internal/technology-decisions",
+                },
+                { text: "Plan", link: "/internal/plan" },
+              ],
+            },
+          ]),
+    ],
   },
 });
