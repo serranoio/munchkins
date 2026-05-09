@@ -48,9 +48,7 @@ export class AgentBuilder {
 
   private steps: Step[] = [];
   private summaryWriterPrompt?: Prompt;
-  private cronSpec?: string;
-  private cronUserMessage?: string;
-  private cronVerbosity: Verbosity = "default";
+  private cronConfig?: CronConfig;
 
   constructor(name: string, description?: string, sandbox?: SandboxFactory) {
     this.name = name;
@@ -101,24 +99,21 @@ export class AgentBuilder {
   }
 
   cron(spec: string, opts: { userMessage: string; verbosity?: Verbosity }): this {
-    if (this.cronSpec !== undefined) {
+    if (this.cronConfig) {
       throw new Error(
-        `cron() already configured on agent "${this.name}" (existing spec: "${this.cronSpec}")`,
+        `cron() already configured on agent "${this.name}" (existing spec: "${this.cronConfig.spec}")`,
       );
     }
-    this.cronSpec = spec;
-    this.cronUserMessage = opts.userMessage;
-    this.cronVerbosity = opts.verbosity ?? "default";
+    this.cronConfig = {
+      spec,
+      userMessage: opts.userMessage,
+      verbosity: opts.verbosity ?? "default",
+    };
     return this;
   }
 
   getCron(): CronConfig | undefined {
-    if (this.cronSpec === undefined || this.cronUserMessage === undefined) return undefined;
-    return {
-      spec: this.cronSpec,
-      userMessage: this.cronUserMessage,
-      verbosity: this.cronVerbosity,
-    };
+    return this.cronConfig;
   }
 
   async run(): Promise<RunResult> {

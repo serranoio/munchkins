@@ -69,11 +69,6 @@ function humanizeDelta(ms: number): string {
   return `in ${s}s`;
 }
 
-function pad(s: string, w: number): string {
-  if (s.length >= w) return s;
-  return s + " ".repeat(w - s.length);
-}
-
 function renderStartupTable(rows: CronnedBuilder[], now: Date): string {
   const cols = ["agent", "schedule", "verbosity", "next tick"];
   const data = rows.map(({ builder, cfg }) => {
@@ -87,8 +82,8 @@ function renderStartupTable(rows: CronnedBuilder[], now: Date): string {
   });
   const widths = cols.map((c, i) => Math.max(c.length, ...data.map((r) => r[i].length)));
   const sep = widths.map((w) => "─".repeat(w)).join("  ");
-  const header = cols.map((c, i) => pad(c, widths[i])).join("  ");
-  const body = data.map((r) => r.map((cell, i) => pad(cell, widths[i])).join("  "));
+  const header = cols.map((c, i) => c.padEnd(widths[i])).join("  ");
+  const body = data.map((r) => r.map((cell, i) => cell.padEnd(widths[i])).join("  "));
   return ["", `  ${header}`, `  ${sep}`, ...body.map((b) => `  ${b}`)].join("\n");
 }
 
