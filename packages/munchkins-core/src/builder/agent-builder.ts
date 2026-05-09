@@ -120,6 +120,8 @@ export class AgentBuilder {
     }
 
     const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
+    const thinking = process.env.__MUNCHKINS_OPT_thinking === "true";
+    const streamOutput = verbose || thinking;
 
     let sandboxHandle: SandboxHandle | undefined;
     let cwd: string;
@@ -155,12 +157,12 @@ export class AgentBuilder {
           if (verbose) {
             banner("agent", `Step ${i + 1}/${this.steps.length} — agent`);
           }
-          await this.runAgent(step, cwd, repoRoot, runLog, i, verbose);
+          await this.runAgent(step, cwd, repoRoot, runLog, i, verbose, streamOutput);
         } else if (step.kind === "deterministic") {
           if (verbose) {
             banner("deterministic", `Step ${i + 1}/${this.steps.length} — deterministic`);
           }
-          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, verbose);
+          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, verbose, streamOutput);
         } else {
           if (verbose) {
             banner("finalize", `Step ${i + 1}/${this.steps.length} — finalize`);
@@ -203,6 +205,7 @@ export class AgentBuilder {
         repoRoot,
         runLog,
         verbose,
+        streamOutput,
       );
       if (writerResult.failureReason) {
         failureReason = writerResult.failureReason;
@@ -299,6 +302,7 @@ export class AgentBuilder {
     repoRoot: string,
     runLog: RunLog,
     verbose: boolean,
+    streamOutput: boolean,
   ): Promise<{ failureReason?: string; commitMessage?: string }> {
     const diff = await sandboxHandle.diff?.();
     if (!diff?.trim()) {
@@ -348,7 +352,7 @@ export class AgentBuilder {
     }
 
     const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: verbose });
+    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
     const durationMs = Date.now() - startTime;
 
     if (!verbose) {
@@ -518,6 +522,7 @@ export class AgentBuilder {
     runLog: RunLog,
     stepIndex: number,
     verbose: boolean,
+    streamOutput: boolean,
   ): Promise<void> {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
     if (verbose) {
@@ -526,7 +531,7 @@ export class AgentBuilder {
       process.stdout.write(`[${this.name}] step ${stepIndex + 1}/${this.steps.length} (agent)`);
     }
     const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: verbose });
+    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
     const durationMs = Date.now() - startTime;
     if (!verbose) {
       const durationS = (durationMs / 1000).toFixed(1);
@@ -549,6 +554,7 @@ export class AgentBuilder {
     runLog: RunLog,
     stepIndex: number,
     verbose: boolean,
+    streamOutput: boolean,
   ): Promise<void> {
     const max = step.loop?.maxIterations ?? 1;
     let lastOutput = "";
@@ -599,7 +605,7 @@ export class AgentBuilder {
           process.stdout.write(`[${this.name}]   fixer iter ${i}`);
         }
         const startTime = Date.now();
-        const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: verbose });
+        const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
         const durationMs = Date.now() - startTime;
         if (!verbose) {
           const durationS = (durationMs / 1000).toFixed(1);

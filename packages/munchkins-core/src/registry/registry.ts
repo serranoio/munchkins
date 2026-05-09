@@ -49,8 +49,12 @@ export class AgentRegistry {
         "Print the resolved pipeline (system + user prompts, commands) without invoking Claude or creating a worktree.",
       );
       sub.option(
+        "--thinking",
+        "Stream Claude output (thinking + responses) without the boxed system/user prompt prefaces.",
+      );
+      sub.option(
         "--verbose",
-        "Print full step-by-step prompts, command outputs, and streaming Claude output.",
+        "Highest of three verbosity levels (default → --thinking → --verbose). Prints full step-by-step prompts, command outputs, and streaming Claude output.",
       );
       for (const [flag, schema] of builder.options) {
         const spec = flagSpec(flag, schema);
@@ -64,6 +68,7 @@ export class AgentRegistry {
       }
       sub.action(async (rawOpts: Record<string, unknown>) => {
         if (rawOpts.dryRun) process.env[`${OPTION_ENV_PREFIX}dryRun`] = "true";
+        if (rawOpts.thinking) process.env[`${OPTION_ENV_PREFIX}thinking`] = "true";
         if (rawOpts.verbose) process.env[`${OPTION_ENV_PREFIX}verbose`] = "true";
         for (const flag of builder.options.keys()) {
           const value = rawOpts[flag];

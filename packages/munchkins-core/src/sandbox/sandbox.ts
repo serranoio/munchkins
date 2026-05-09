@@ -33,11 +33,7 @@ export function gitWorktreeSandbox(): SandboxFactory {
           );
         }
         const msg = ctx?.commitMessage ?? `Merge ${branch}`;
-        await $`git merge --squash ${branch}`.cwd(repoRoot).quiet();
-        const dirty = await $`git diff --cached --quiet`.cwd(repoRoot).nothrow();
-        if (dirty.exitCode !== 0) {
-          await $`git commit -m ${msg}`.cwd(repoRoot).quiet();
-        }
+        await $`git merge --no-ff -m ${msg} ${branch}`.cwd(repoRoot).quiet();
         await cleanupWorktree(path, repoRoot);
         await deleteBranch(branch, repoRoot);
       },
