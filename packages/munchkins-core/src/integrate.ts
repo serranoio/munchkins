@@ -20,11 +20,10 @@ The user prompt names the conflicted files and includes the original goal of the
 
 const FIXER_DISALLOWED_TOOLS = ["Bash"];
 
-export interface IntegrateOptions {
-  /** Directory where `branch` is checked out. May be a worktree or any other checkout. */
+export interface RebaseAndResolveOptions {
+  /** Directory where the branch to rebase is currently checked out. Any git checkout works — worktree, clone, bind-mount, etc. */
   workdir: string;
-  branch: string;
-  repoRoot: string;
+  /** Branch to rebase onto. Resolved inside `workdir`. */
   baseBranch: string;
   /** Original goal text from the user-message; surfaces in the fixer's user prompt. */
   originalGoal: string;
@@ -32,7 +31,7 @@ export interface IntegrateOptions {
   cli: AgentCLI;
   /** Deterministic checks to re-run after a fixer iteration; usually DEFAULT_CHECKS. */
   postFixChecks: string[];
-  /** Cap on fixer iterations across the entire integration. Default 3. */
+  /** Cap on fixer iterations across the entire rebase. Default 3. */
   maxFixerIter?: number;
   /** Hook for the run-log to capture each fixer invocation. */
   onFixerInvocation?: (info: {
@@ -47,30 +46,28 @@ export interface IntegrateOptions {
   log?: (line: string) => void;
 }
 
-export type IntegrateResult =
+export type RebaseAndResolveResult =
   | { ok: true; fixerIters: number }
   | { ok: false; reason: string; fixerIters: number };
 
 /**
- * Rebase `branch` onto `baseBranch` inside `workdir`, optionally invoking the
- * fixer to resolve conflicts, then fast-forward `baseBranch` to the rebased tip
- * inside `repoRoot`.
+ * Rebase the current branch in `workdir` onto `baseBranch`, invoking the
+ * merge-fixer LLM to resolve any conflicts up to `maxFixerIter` times, and
+ * re-running `postFixChecks` after the fixer touches things.
  *
- * `workdir` and `repoRoot` are the same git repository in two checkouts —
- * usually a worktree (workdir) and the main checkout (repoRoot), but any pair
- * works as long as `repoRoot` has `baseBranch` checked out and `workdir` has
- * `branch` checked out. Pass `workdir === repoRoot` only when you do not need
- * the ff-merge step (TODO: a future flag will let callers skip step 3).
+ * Sandbox-agnostic: this primitive only requires a single git checkout where
+ * the branch to rebase is currently HEAD. It does not land the branch
+ * anywhere — that's `integrateBranch`'s job.
  *
- * Contract: on success, `workdir` is clean and `baseBranch` in `repoRoot`
- * points at the rebased tip. On failure, the rebase is aborted and the workdir
- * is left at its pre-rebase state for the operator to inspect.
+ * Contract: on success, `workdir` is on the rebased tip with no conflict
+ * markers and a clean working tree. On failure, the rebase is aborted and the
+ * workdir is left at its pre-rebase state for the operator to inspect.
  */
-export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
+export async function rebaseAndResolve(
+  opts: RebaseAndResolveOptions,
+): Promise<RebaseAndResolveResult> {
   const {
     workdir,
-    branch,
-    repoRoot,
     baseBranch,
     originalGoal,
     cli,
@@ -82,8 +79,7 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
 
   const say = (line: string) => log?.(line);
 
-  // Step 1: rebase
-  say(`integrate: rebase onto ${baseBranch}`);
+  say(`rebase: onto ${baseBranch}`);
   let rebase = await $`git rebase ${baseBranch}`.cwd(workdir).nothrow().quiet();
 
   let fixerIters = 0;
@@ -92,7 +88,6 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
     const conflicted = await listConflictedFiles(workdir);
 
     if (conflicted.length === 0) {
-      // Rebase failed for a non-conflict reason (e.g. dirty worktree, broken HEAD)
       await abortRebase(workdir);
       return {
         ok: false,
@@ -111,7 +106,7 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
     }
 
     fixerIters++;
-    say(`integrate: fixer iter ${fixerIters}/${maxFixerIter} on ${conflicted.length} file(s)`);
+    say(`rebase: fixer iter ${fixerIters}/${maxFixerIter} on ${conflicted.length} file(s)`);
 
     const userPrompt = buildFixerUserPrompt(originalGoal, conflicted);
     const startTime = Date.now();
@@ -133,18 +128,13 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
 
     if (r.exitCode !== 0) {
       await abortRebase(workdir);
-      return {
-        ok: false,
-        reason: `merge-fixer CLI exited ${r.exitCode}`,
-        fixerIters,
-      };
+      return { ok: false, reason: `merge-fixer CLI exited ${r.exitCode}`, fixerIters };
     }
 
     // The fixer should have removed conflict markers but not staged or committed.
     // Stage all edits and ask git to continue.
     const stillConflicted = await listConflictedFiles(workdir);
     if (stillConflicted.length === conflicted.length) {
-      // Fixer didn't actually do anything; bail rather than spin
       await abortRebase(workdir);
       return {
         ok: false,
@@ -161,9 +151,8 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
       .quiet();
   }
 
-  // Step 2: post-rebase verification — only if we touched things
   if (fixerIters > 0 && postFixChecks.length > 0) {
-    say(`integrate: re-running ${postFixChecks.length} check(s) after fixer`);
+    say(`rebase: re-running ${postFixChecks.length} check(s) after fixer`);
     for (const cmd of postFixChecks) {
       const c = await $`${{ raw: cmd }}`.cwd(workdir).nothrow().quiet();
       if (c.exitCode !== 0) {
@@ -176,18 +165,45 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
     }
   }
 
-  // Step 3: fast-forward main onto the rebased tip
-  say(`integrate: fast-forward ${baseBranch} -> ${branch}`);
-  const ff = await $`git merge --ff-only ${branch}`.cwd(repoRoot).nothrow().quiet();
+  return { ok: true, fixerIters };
+}
+
+export interface IntegrateOptions extends RebaseAndResolveOptions {
+  /** Branch to ff-merge into `baseBranch` after the rebase succeeds. */
+  branch: string;
+  /** Separate checkout of the same repo with `baseBranch` checked out. */
+  repoRoot: string;
+}
+
+export type IntegrateResult = RebaseAndResolveResult;
+
+/**
+ * `rebaseAndResolve` + fast-forward `baseBranch` to the rebased tip in
+ * `repoRoot`. Use when you want the agent's branch to actually land on the
+ * parent branch (S1 / S3 use cases). For flows that just need the rebase to
+ * happen — e.g. preparing a branch for a PR (S2 / S4) — call
+ * `rebaseAndResolve` directly.
+ *
+ * `workdir` and `repoRoot` must be two checkouts of the same repository:
+ * `workdir` has the branch to rebase, `repoRoot` has `baseBranch`. Worktrees
+ * are the most ergonomic source of that pairing but any two-checkout setup
+ * works.
+ */
+export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
+  const r = await rebaseAndResolve(opts);
+  if (!r.ok) return r;
+
+  opts.log?.(`integrate: fast-forward ${opts.baseBranch} -> ${opts.branch}`);
+  const ff = await $`git merge --ff-only ${opts.branch}`.cwd(opts.repoRoot).nothrow().quiet();
   if (ff.exitCode !== 0) {
     return {
       ok: false,
       reason: `ff-merge failed despite clean rebase: ${ff.stderr.toString().slice(-500)}`,
-      fixerIters,
+      fixerIters: r.fixerIters,
     };
   }
 
-  return { ok: true, fixerIters };
+  return r;
 }
 
 async function listConflictedFiles(cwd: string): Promise<string[]> {
