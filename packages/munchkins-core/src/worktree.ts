@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 
 const WORKTREE_DIR = ".worktrees";
@@ -8,36 +8,31 @@ export interface WorktreeInfo {
   branch: string;
 }
 
-export async function createWorktree(
-  agentName: string,
-  instanceIndex?: number,
-): Promise<WorktreeInfo> {
-  const timestamp = Date.now();
-  const suffix = instanceIndex !== undefined ? `${timestamp}-${instanceIndex}` : `${timestamp}`;
-  const branch = `agent/${agentName}-${suffix}`;
-  const worktreePath = join(WORKTREE_DIR, `${agentName}-${suffix}`);
-
-  await $`mkdir -p ${WORKTREE_DIR}`.quiet();
-  await $`git worktree add ${worktreePath} -b ${branch}`.quiet();
-
-  return {
-    path: worktreePath,
-    branch,
-  };
-}
-
-export async function cleanupWorktree(worktreePath: string): Promise<void> {
-  await $`git worktree remove ${worktreePath} --force`.quiet().nothrow();
-}
-
-export async function deleteBranch(branch: string): Promise<void> {
-  if (branch?.startsWith("agent/")) {
-    await $`git branch -D ${branch}`.quiet().nothrow();
+export async function createWorktree(agentName: string, repoRoot: string): Promise<WorktreeInfo> {
+  if (!isAbsolute(repoRoot)) {
+    throw new Error(`createWorktree: repoRoot must be absolute, got ${repoRoot}`);
   }
+  const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const branch = `agent/${agentName}-${suffix}`;
+  const path = join(repoRoot, WORKTREE_DIR, `${agentName}-${suffix}`);
+
+  await $`mkdir -p ${join(repoRoot, WORKTREE_DIR)}`.quiet();
+  await $`git worktree add ${path} -b ${branch}`.cwd(repoRoot).quiet();
+
+  return { path, branch };
 }
 
-export async function listWorktrees(): Promise<string[]> {
-  const result = await $`git worktree list --porcelain`.quiet();
+export async function cleanupWorktree(worktreePath: string, repoRoot: string): Promise<void> {
+  await $`git worktree remove ${worktreePath} --force`.cwd(repoRoot).quiet();
+}
+
+export async function deleteBranch(branch: string, repoRoot: string): Promise<void> {
+  if (!branch?.startsWith("agent/")) return;
+  await $`git branch -D ${branch}`.cwd(repoRoot).quiet();
+}
+
+export async function listWorktrees(repoRoot: string): Promise<string[]> {
+  const result = await $`git worktree list --porcelain`.cwd(repoRoot).quiet();
   const lines = result.text().split("\n");
 
   const worktrees: string[] = [];
@@ -50,7 +45,7 @@ export async function listWorktrees(): Promise<string[]> {
   return worktrees;
 }
 
-export async function worktreeExists(worktreePath: string): Promise<boolean> {
-  const worktrees = await listWorktrees();
-  return worktrees.some((w) => w.includes(worktreePath));
+export async function worktreeExists(worktreePath: string, repoRoot: string): Promise<boolean> {
+  const worktrees = await listWorktrees(repoRoot);
+  return worktrees.some((w) => w === worktreePath);
 }

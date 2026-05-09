@@ -1,16 +1,20 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
   DEFAULT_CHECKS,
-  defaultFinalize,
   defaultFixer,
+  defaultSummaryWriter,
   GUIDELINES_PATH,
 } from "../_shared/presets.js";
 
 const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
 
-const builder = new AgentBuilder("bug-fix", "Fix a bug described in a markdown user-message file.")
+const builder = new AgentBuilder(
+  "bug-fix",
+  "Fix a bug described in a markdown user-message file.",
+  gitWorktreeSandbox(),
+)
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSystem(join(PROMPTS, "bug-fix.md"))
@@ -27,7 +31,7 @@ const builder = new AgentBuilder("bug-fix", "Fix a bug described in a markdown u
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },
   })
-  .finalize([], defaultFinalize("bug-fix"));
+  .summaryWriter(defaultSummaryWriter());
 
 registry.register(builder);
 

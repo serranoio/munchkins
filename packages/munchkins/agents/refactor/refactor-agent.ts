@@ -1,16 +1,20 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
   DEFAULT_CHECKS,
-  defaultFinalize,
   defaultFixer,
+  defaultSummaryWriter,
   GUIDELINES_PATH,
 } from "../_shared/presets.js";
 
 const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts");
 
-const builder = new AgentBuilder("refactor", "Refactor a target for DRY violations and clarity.")
+const builder = new AgentBuilder(
+  "refactor",
+  "Refactor a target for DRY violations and clarity.",
+  gitWorktreeSandbox(),
+)
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSystem(join(PROMPTS, "refactor.md"))
@@ -22,7 +26,7 @@ const builder = new AgentBuilder("refactor", "Refactor a target for DRY violatio
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },
   })
-  .finalize([], defaultFinalize("refactor"));
+  .summaryWriter(defaultSummaryWriter());
 
 registry.register(builder);
 

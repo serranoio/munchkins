@@ -44,6 +44,10 @@ export class AgentRegistry {
     const program = new Command().name("munchkins").description("Munchkins agent CLI");
     for (const [name, builder] of this.agents) {
       const sub = program.command(name).description(builder.description ?? "");
+      sub.option(
+        "--dry-run",
+        "Print the resolved pipeline (system + user prompts, commands) without invoking Claude or creating a worktree.",
+      );
       for (const [flag, schema] of builder.options) {
         const spec = flagSpec(flag, schema);
         if (schema.required) {
@@ -55,6 +59,7 @@ export class AgentRegistry {
         }
       }
       sub.action(async (rawOpts: Record<string, unknown>) => {
+        if (rawOpts.dryRun) process.env[`${OPTION_ENV_PREFIX}dryRun`] = "true";
         for (const flag of builder.options.keys()) {
           const value = rawOpts[flag];
           if (value === undefined) continue;

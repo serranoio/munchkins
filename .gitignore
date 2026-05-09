@@ -2,6 +2,8 @@ node_modules/
 dist/
 doc_build/
 .turbo/
+.munchkins/
+.scenario-artifacts/
 .DS_Store
 .env
 .env.*

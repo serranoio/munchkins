@@ -6,7 +6,7 @@ export interface ScenarioResult {
   mockCallLog?: Array<{ index: number; bytesRead: number }>;
   stubCallLog?: string[];
   failure?: {
-    phase: "setup" | "execution" | "assertion" | "cleanup";
+    phase: "setup" | "execution" | "assertion" | "cleanup" | "artifact";
     message: string;
     stack?: string;
   };

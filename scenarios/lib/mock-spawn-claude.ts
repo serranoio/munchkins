@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { $ } from "bun";
 
 export interface SpawnClaudeMockResponse {
   exitCode: number;
@@ -28,7 +29,7 @@ export function configureMock(dir: string): void {
   callLog.length = 0;
 }
 
-export async function spawnClaudeMock(): Promise<SpawnClaudeMockResponse> {
+export async function spawnClaudeMock(opts: { cwd: string }): Promise<SpawnClaudeMockResponse> {
   if (nextIndex >= responseFiles.length) {
     throw new Error(
       `mock fixture exhausted: spawnClaude invoked ${nextIndex + 1} times but only ${responseFiles.length} canned responses are available`,
@@ -37,8 +38,22 @@ export async function spawnClaudeMock(): Promise<SpawnClaudeMockResponse> {
   const file = responseFiles[nextIndex];
   const raw = readFileSync(join(responsesDir, file), "utf-8");
   const parsed = JSON.parse(raw) as SpawnClaudeMockResponse;
-  callLog.push({ index: nextIndex, bytesRead: raw.length });
+  const index = nextIndex;
+  callLog.push({ index, bytesRead: raw.length });
   nextIndex += 1;
+
+  const marker = `__mock_${index}_${file.replace(/\.json$/, "")}.txt`;
+  await Bun.write(join(opts.cwd, marker), `mock invocation ${index}\n`);
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "mock",
+    GIT_AUTHOR_EMAIL: "mock@local",
+    GIT_COMMITTER_NAME: "mock",
+    GIT_COMMITTER_EMAIL: "mock@local",
+  };
+  await $`git add ${marker}`.cwd(opts.cwd).env(env).quiet();
+  await $`git commit -m ${`mock-${index}: ${file}`}`.cwd(opts.cwd).env(env).quiet();
+
   return parsed;
 }
 
@@ -48,6 +63,10 @@ export function getMockCallLog(): MockCallEntry[] {
 
 export function getExpectedMockCallCount(): number {
   return responseFiles.length;
+}
+
+export function getResponseFileNames(): string[] {
+  return [...responseFiles];
 }
 
 export function setupAuditGuard(): void {

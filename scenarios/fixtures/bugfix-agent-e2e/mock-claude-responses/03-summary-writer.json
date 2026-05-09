@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Analyzed the diff and produced a summary.\n\n{\"commitMessage\": \"fix(math): correct add function to return sum instead of difference\", \"markdown\": \"**Goal:** Fix the add function in src/math.ts which returned subtraction instead of addition.\\n\\n**Outcome:** The mock pipeline ran successfully and verified the fix.\\n\\n**Files changed:**\\n- `__mock_0_01-bug-fix.txt` — mock invocation marker\\n- `__mock_1_02-refactorer.txt` — mock invocation marker\"}",
+  "durationMs": 0
+}
