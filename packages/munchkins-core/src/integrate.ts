@@ -78,6 +78,10 @@ export async function rebaseAndResolve(
   } = opts;
 
   const say = (line: string) => log?.(line);
+  const abortAndFail = async (reason: string): Promise<RebaseAndResolveResult> => {
+    await abortRebase(workdir);
+    return { ok: false, reason, fixerIters };
+  };
 
   say(`rebase: onto ${baseBranch}`);
   let rebase = await $`git rebase ${baseBranch}`.cwd(workdir).nothrow().quiet();
@@ -88,21 +92,15 @@ export async function rebaseAndResolve(
     const conflicted = await listConflictedFiles(workdir);
 
     if (conflicted.length === 0) {
-      await abortRebase(workdir);
-      return {
-        ok: false,
-        reason: `rebase failed without conflict markers: ${rebase.stderr.toString().slice(-1000)}`,
-        fixerIters,
-      };
+      return abortAndFail(
+        `rebase failed without conflict markers: ${rebase.stderr.toString().slice(-1000)}`,
+      );
     }
 
     if (fixerIters >= maxFixerIter) {
-      await abortRebase(workdir);
-      return {
-        ok: false,
-        reason: `merge-fixer exhausted ${maxFixerIter} iterations; conflicted: ${conflicted.join(", ")}`,
-        fixerIters,
-      };
+      return abortAndFail(
+        `merge-fixer exhausted ${maxFixerIter} iterations; conflicted: ${conflicted.join(", ")}`,
+      );
     }
 
     fixerIters++;
@@ -127,8 +125,7 @@ export async function rebaseAndResolve(
     });
 
     if (r.exitCode !== 0) {
-      await abortRebase(workdir);
-      return { ok: false, reason: `merge-fixer CLI exited ${r.exitCode}`, fixerIters };
+      return abortAndFail(`merge-fixer CLI exited ${r.exitCode}`);
     }
 
     // Detect leftover markers via working-tree content (`git diff --check`).
@@ -140,22 +137,16 @@ export async function rebaseAndResolve(
     // Bail early if the fixer wrote markers to files outside the conflict set.
     const stray = [...stillMarked].filter((f) => !conflicted.includes(f));
     if (stray.length > 0) {
-      await abortRebase(workdir);
-      return {
-        ok: false,
-        reason: `merge-fixer wrote markers to files outside the conflict set: ${stray.join(", ")}`,
-        fixerIters,
-      };
+      return abortAndFail(
+        `merge-fixer wrote markers to files outside the conflict set: ${stray.join(", ")}`,
+      );
     }
 
     // Bail if the fixer made zero forward progress.
     if (stillMarked.size === conflicted.length) {
-      await abortRebase(workdir);
-      return {
-        ok: false,
-        reason: `merge-fixer left markers in every conflicted file: ${[...stillMarked].join(", ")}`,
-        fixerIters,
-      };
+      return abortAndFail(
+        `merge-fixer left markers in every conflicted file: ${[...stillMarked].join(", ")}`,
+      );
     }
 
     // Stage only the files we've verified clean. Files still carrying markers
@@ -241,7 +232,7 @@ async function filesWithLeftoverMarkers(workdir: string): Promise<string[]> {
   const r = await $`git diff --check`.cwd(workdir).nothrow().quiet();
   if (r.exitCode === 0) return [];
   const files = new Set<string>();
-  for (const line of r.stdout.toString().split("\n")) {
+  for (const line of r.text().split("\n")) {
     // git diff --check emits both whitespace and conflict-marker warnings;
     // filter to conflict markers so a stray trailing-whitespace warning
     // doesn't masquerade as a leftover marker.

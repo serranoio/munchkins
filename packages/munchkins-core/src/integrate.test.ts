@@ -42,11 +42,17 @@ async function createRepo(): Promise<Repo> {
   };
 }
 
-async function commitFile(cwd: string, file: string, content: string, msg: string): Promise<void> {
-  await Bun.write(join(cwd, file), content);
+async function commitFiles(cwd: string, files: Record<string, string>, msg: string): Promise<void> {
+  await Promise.all(
+    Object.entries(files).map(([path, content]) => Bun.write(join(cwd, path), content)),
+  );
   const env = gitEnv();
   await $`git add -A`.cwd(cwd).env(env).quiet();
   await $`git commit -m ${msg}`.cwd(cwd).env(env).quiet();
+}
+
+async function commitFile(cwd: string, file: string, content: string, msg: string): Promise<void> {
+  await commitFiles(cwd, { [file]: content }, msg);
 }
 
 type FixerHandler = (opts: SpawnOptions, iter: number) => Promise<SpawnResult> | SpawnResult;
@@ -108,26 +114,34 @@ async function setupTwoFileConflict(repoPath: string): Promise<{
   fileA: string;
   fileB: string;
 }> {
-  const env = gitEnv();
   const fileA = "a.ts";
   const fileB = "b.ts";
 
-  await Bun.write(join(repoPath, fileA), "export const a = 0;\n");
-  await Bun.write(join(repoPath, fileB), "export const b = 0;\n");
-  await $`git add -A`.cwd(repoPath).env(env).quiet();
-  await $`git commit -m base`.cwd(repoPath).env(env).quiet();
+  await commitFiles(
+    repoPath,
+    { [fileA]: "export const a = 0;\n", [fileB]: "export const b = 0;\n" },
+    "base",
+  );
 
   const { path: workdir, branch } = await createWorktree("bug-fix", repoPath);
 
-  await Bun.write(join(workdir, fileA), "export const a = 1; // branch\n");
-  await Bun.write(join(workdir, fileB), "export const b = 1; // branch\n");
-  await $`git add -A`.cwd(workdir).env(env).quiet();
-  await $`git commit -m "branch edits"`.cwd(workdir).env(env).quiet();
+  await commitFiles(
+    workdir,
+    {
+      [fileA]: "export const a = 1; // branch\n",
+      [fileB]: "export const b = 1; // branch\n",
+    },
+    "branch edits",
+  );
 
-  await Bun.write(join(repoPath, fileA), "export const a = 2; // main\n");
-  await Bun.write(join(repoPath, fileB), "export const b = 2; // main\n");
-  await $`git add -A`.cwd(repoPath).env(env).quiet();
-  await $`git commit -m "main edits"`.cwd(repoPath).env(env).quiet();
+  await commitFiles(
+    repoPath,
+    {
+      [fileA]: "export const a = 2; // main\n",
+      [fileB]: "export const b = 2; // main\n",
+    },
+    "main edits",
+  );
 
   return { workdir, branch, fileA, fileB };
 }
