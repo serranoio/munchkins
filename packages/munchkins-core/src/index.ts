@@ -1,5 +1,6 @@
 export {
   AgentBuilder,
+  type CronConfig,
   deriveSlugDeterministic,
   type Fragment,
   getSlugWithRetry,
@@ -16,6 +17,7 @@ export {
   type SpawnClaudeUsage,
   sanitize,
   spawnClaude,
+  type Verbosity,
 } from "./builder/index.js";
 export {
   type IntegrateOptions,
@@ -35,6 +37,13 @@ export {
   type TeardownContext,
   type TeardownResult,
 } from "./sandbox/index.js";
+export {
+  applyTickEnv,
+  type CronnedBuilder,
+  collectCronnedBuilders,
+  type RunDaemonOptions,
+  runDaemon,
+} from "./scheduler/index.js";
 export {
   cleanupWorktree,
   createWorktree,

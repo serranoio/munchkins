@@ -17,6 +17,14 @@ export interface OptionSchema {
   default?: string | boolean | number | string[];
 }
 
+export type Verbosity = "default" | "thinking" | "verbose";
+
+export interface CronConfig {
+  spec: string;
+  userMessage: string;
+  verbosity: Verbosity;
+}
+
 type AgentStep = { kind: "agent"; prompt: Prompt };
 type DeterministicStep = {
   kind: "deterministic";
@@ -40,6 +48,9 @@ export class AgentBuilder {
 
   private steps: Step[] = [];
   private summaryWriterPrompt?: Prompt;
+  private cronSpec?: string;
+  private cronUserMessage?: string;
+  private cronVerbosity: Verbosity = "default";
 
   constructor(name: string, description?: string, sandbox?: SandboxFactory) {
     this.name = name;
@@ -87,6 +98,27 @@ export class AgentBuilder {
   summaryWriter(prompt: Prompt): this {
     this.summaryWriterPrompt = prompt;
     return this;
+  }
+
+  cron(spec: string, opts: { userMessage: string; verbosity?: Verbosity }): this {
+    if (this.cronSpec !== undefined) {
+      throw new Error(
+        `cron() already configured on agent "${this.name}" (existing spec: "${this.cronSpec}")`,
+      );
+    }
+    this.cronSpec = spec;
+    this.cronUserMessage = opts.userMessage;
+    this.cronVerbosity = opts.verbosity ?? "default";
+    return this;
+  }
+
+  getCron(): CronConfig | undefined {
+    if (this.cronSpec === undefined || this.cronUserMessage === undefined) return undefined;
+    return {
+      spec: this.cronSpec,
+      userMessage: this.cronUserMessage,
+      verbosity: this.cronVerbosity,
+    };
   }
 
   async run(): Promise<RunResult> {

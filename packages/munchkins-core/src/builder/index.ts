@@ -1,4 +1,10 @@
-export { AgentBuilder, type OptionSchema, type RunResult } from "./agent-builder.js";
+export {
+  AgentBuilder,
+  type CronConfig,
+  type OptionSchema,
+  type RunResult,
+  type Verbosity,
+} from "./agent-builder.js";
 export {
   AgentCLI,
   type AgentCLIName,

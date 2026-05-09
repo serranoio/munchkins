@@ -14,13 +14,15 @@
     ".": "./src/index.ts",
     "./builder": "./src/builder/index.ts",
     "./builder/spawn-claude.ts": "./src/builder/spawn-claude.ts",
-    "./registry": "./src/registry/index.ts"
+    "./registry": "./src/registry/index.ts",
+    "./scheduler": "./src/scheduler/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test src"
   },
   "dependencies": {
-    "commander": "^12.0.0"
+    "commander": "^12.0.0",
+    "cron-parser": "^5.5.0"
   }
 }
