@@ -4,6 +4,8 @@ doc_build/
 .turbo/
 .munchkins/
 .scenario-artifacts/
+.worktrees/
+scratch/
 .DS_Store
 .env
 .env.*

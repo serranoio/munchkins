@@ -4,6 +4,64 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor: extract duplicated helpers across builder, run-log, scenarios
+**2026-05-08 20:11 PDT · refactor · 408.3s · $3.3636**
+
+**Goal:** Fix any refactoring opportunities found across the codebase.
+
+**Outcome:** Pulled four sets of duplicated inline logic into named helpers/constants. In `agent-builder.ts`, the user-message resolution and summary-writer prompt construction were duplicated across `_buildSummaryWriterUserPrompt`-equivalent call sites; these are now `resolveOriginalGoal()` and `buildSummaryWriterUserPrompt()`. In `run-log.ts`, the command-entry log formatter and env-path resolution logic were each duplicated; extracted as `formatCommandEntries()` and `resolveEnvPath()`. In `sandbox.test.ts`, the git identity env block was inlined twice; extracted to `TEST_GIT_IDENTITY` constant and `gitEnv()` helper. In `scenarios/index.ts`, six near-identical fail-result objects were collapsed into a single `failResult()` factory closure. Net line count drops, but the primary value is single source of truth for each pattern.
+
+**Refactor type:** extraction
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins-core/src/builder/agent-builder.ts | 656 | 637 | −19 |
+| packages/munchkins-core/src/run-log.ts | 331 | 332 | +1 |
+| packages/munchkins-core/src/sandbox/sandbox.test.ts | 182 | 181 | −1 |
+| scenarios/index.ts | 358 | 311 | −47 |
+
+**Total:** 1527 → 1461 (Δ −66)
+
+**Files changed:**
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/run-log.ts
+- packages/munchkins-core/src/sandbox/sandbox.test.ts
+- scenarios/index.ts
+
+**Extracted helpers and their call sites:**
+- `resolveOriginalGoal(repoRoot)` in `agent-builder.ts` — called from the runtime summary-writer phase (~line 317) and the resolved-prompt preview phase (~line 442).
+- `buildSummaryWriterUserPrompt(originalGoal, diffSection)` in `agent-builder.ts` — called from the same two phases as above.
+- `formatCommandEntries(entries)` in `run-log.ts` — called from `recordDeterministic` (~line 206) and `recordFinalize` (~line 244).
+- `resolveEnvPath(envValue, fallback, repoRoot)` in `run-log.ts` — called from the `RunLog` constructor (run-log dir) and `_prependChangelog` (changelog path).
+- `TEST_GIT_IDENTITY` constant + `gitEnv()` helper in `sandbox.test.ts` — used by `createRepo()` and `commit()`.
+- `failResult(phase, message, opts?)` closure in `scenarios/index.ts` — replaces six inline fail-shaped returns covering registry-miss, agent failure, mock-call audit, claude-spawn audit, cleanup assertion, artifact assertion, and the catch-all setup error.
+
+---
+## feat(cli): add --thinking flag for mid verbosity level
+**2026-05-08 19:58 PDT · feat-small · 582.6s · $4.0524**
+
+**Goal:** Add a middle verbosity level called `--thinking` that sits between the default (terse) and `--verbose` (full), streaming Claude output without the boxed prompt prefaces.
+
+**Outcome:** Registered a new `--thinking` Commander option on every agent subcommand that sets `__MUNCHKINS_OPT_thinking=true`. `AgentBuilder.run()` now reads both `verbose` and `thinking` env vars and computes a `streamOutput` flag (`verbose || thinking`) that is threaded through `runAgent`, `runDeterministic`, and the writer phase to control whether `spawnClaude` streams. Boxed `printInvocation` output, phase banners, and per-command stdout remain gated on the existing `verbose` flag, so `--thinking` only unlocks streaming. Updated `--verbose` help text to mention the three levels and added registry tests covering option registration and env-var wiring.
+
+**New surface:**
+
+- CLI flag: `--thinking` on every registered agent subcommand (registered in `packages/munchkins-core/src/registry/registry.ts`)
+- Env var: `__MUNCHKINS_OPT_thinking`
+- New file: `packages/munchkins-core/src/registry/registry.test.ts`
+
+**Lines added:** +124 (across 4 files)
+
+**Files changed:**
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/registry/registry.ts
+- packages/munchkins-core/src/registry/registry.test.ts
+- packages/munchkins-core/src/sandbox/sandbox.ts
+
+
+---
 ## refactor(run-log): extract _writeClaudeCall helper
 **2026-05-08 19:02 PDT · refactor · 267.4s · $1.6061**
 

@@ -1,7 +1,20 @@
+import { existsSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 import { defineConfig } from "@rspress/core";
 
 const isPublicBuild = process.env.PUBLIC_DOCS === "true";
+
+const plansDir = path.join(__dirname, "pages/internal/plans");
+const planNavItems = existsSync(plansDir)
+  ? readdirSync(plansDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.replace(/\.md$/, ""))
+      .sort()
+      .map((slug) => ({
+        text: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        link: `/internal/plans/${slug}`,
+      }))
+  : [];
 
 export default defineConfig({
   root: path.join(__dirname, "pages"),
@@ -35,6 +48,9 @@ export default defineConfig({
                 { text: "Plan", link: "/internal/plan" },
               ],
             },
+            ...(planNavItems.length > 0
+              ? [{ text: "Plans", items: planNavItems }]
+              : []),
           ]),
     ],
   },
