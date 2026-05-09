@@ -264,7 +264,8 @@ export class AgentBuilder {
         for (const cmd of finalizeStep?.onPass ?? []) {
           await $`${{ raw: cmd }}`.cwd(repoRoot).env(env).quiet();
         }
-        const costStr = `$${runLog.getCostUsd().toFixed(4)}`;
+        const cost = runLog.getCostUsd();
+        const costStr = cost === undefined ? "—" : `$${cost.toFixed(4)}`;
         const tokenStr = `${runLog.getTokensIn()}→${runLog.getTokensOut()}`;
         if (commitMessage) {
           process.stdout.write(

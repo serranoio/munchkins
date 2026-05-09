@@ -1,4 +1,13 @@
 export { AgentBuilder, type OptionSchema, type RunResult } from "./agent-builder.js";
+export {
+  AgentCLI,
+  type AgentCLIName,
+  type AgentUsage,
+  ClaudeCLI,
+  CodexCLI,
+  type SpawnOptions,
+  type SpawnResult,
+} from "./agent-cli.js";
 export { type Fragment, OPTION_ENV_PREFIX, type OptionDeclaration, Prompt } from "./prompt.js";
 export {
   deriveSlugDeterministic,

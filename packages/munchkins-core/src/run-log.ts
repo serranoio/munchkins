@@ -22,7 +22,7 @@ export interface RunSummary {
   tokensOut: number;
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
-  costUsd: number;
+  costUsd?: number;
 }
 
 function pad(n: number): string {
@@ -80,6 +80,7 @@ export class RunLog {
   private cacheCreationInputTokens = 0;
   private cacheReadInputTokens = 0;
   private costUsd = 0;
+  private costUsdHasUnknownContributions = false;
   private commitMessage: string | undefined;
   private markdown: string | undefined;
 
@@ -113,11 +114,15 @@ export class RunLog {
     this.tokensOut += usage.outputTokens;
     this.cacheCreationInputTokens += usage.cacheCreationInputTokens;
     this.cacheReadInputTokens += usage.cacheReadInputTokens;
-    this.costUsd += usage.costUsd;
+    if (usage.costUsd === undefined) {
+      this.costUsdHasUnknownContributions = true;
+    } else {
+      this.costUsd += usage.costUsd;
+    }
   }
 
-  getCostUsd(): number {
-    return this.costUsd;
+  getCostUsd(): number | undefined {
+    return this.costUsdHasUnknownContributions ? undefined : this.costUsd;
   }
 
   getTokensIn(): number {
@@ -282,7 +287,7 @@ export class RunLog {
       tokensOut: this.tokensOut,
       cacheCreationInputTokens: this.cacheCreationInputTokens,
       cacheReadInputTokens: this.cacheReadInputTokens,
-      costUsd: this.costUsd,
+      costUsd: this.getCostUsd(),
     };
     writeFileSync(join(this.dir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 
@@ -307,9 +312,11 @@ export class RunLog {
     );
     const durationSeconds = (durationMs / 1000).toFixed(1);
     const dateStr = formatChangelogDate(endedAt);
+    const cost = this.getCostUsd();
+    const costStr = cost === undefined ? "—" : `$${cost.toFixed(4)}`;
     const entry = [
       `## ${this.commitMessage}`,
-      `**${dateStr} · ${this.agent} · ${durationSeconds}s · $${this.costUsd.toFixed(4)}**`,
+      `**${dateStr} · ${this.agent} · ${durationSeconds}s · ${costStr}**`,
       "",
       this.markdown,
       "",

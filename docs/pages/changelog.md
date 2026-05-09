@@ -4,6 +4,41 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(core): add switchable agent CLI backend (claude/codex)
+**2026-05-08 20:59 PDT · feat-small · 671.0s · $6.1088**
+
+**Goal:** Add a process-wide backend switch so operators can run any agent against either the `claude` CLI (default) or the `codex` CLI, selected by `--cli` flag or `MUNCHKINS_CLI` env var.
+
+**Outcome:** Introduced an abstract `AgentCLI` base class with `ClaudeCLI` and `CodexCLI` subclasses behind a single `AgentCLI.fromEnv()` seam. The existing `spawnClaude` export collapses to a one-liner that delegates to `AgentCLI.fromEnv().spawn()`, preserving the harness mock seam and all 3 internal call sites unchanged. Cost tracking becomes optional end-to-end (`AgentUsage.costUsd?`, `RunSummary.costUsd?`, `RunLog.getCostUsd()` returns `number | undefined`) so Codex's missing cost data renders as `—` honestly instead of being faked as `$0.0000`. Codex's missing system-prompt flag is handled by prepending `## System\n…\n\n## Task\n…` as a single positional argument.
+
+**New surface:**
+
+- Export: `AgentCLI` abstract class (in `packages/munchkins-core/src/builder/agent-cli.ts`)
+- Export: `ClaudeCLI` class with `buildArgs()` and `spawn()` (in `packages/munchkins-core/src/builder/agent-cli.ts`)
+- Export: `CodexCLI` class with `buildArgs()` and `spawn()` (in `packages/munchkins-core/src/builder/agent-cli.ts`)
+- Export: `AgentCLI.fromEnv()` static factory (in `packages/munchkins-core/src/builder/agent-cli.ts`)
+- Export: types `SpawnOptions`, `SpawnResult`, `AgentUsage`, `AgentCLIName` (in `packages/munchkins-core/src/builder/agent-cli.ts`, re-exported from `packages/munchkins-core/src/builder/index.ts`)
+- CLI flag: `--cli <cli>` on every registered agent subcommand (registered in `packages/munchkins-core/src/registry/registry.ts`)
+- Env var: `MUNCHKINS_CLI` (public; read by `AgentCLI.fromEnv()`)
+- Env var: `__MUNCHKINS_OPT_cli` (internal flag-bridge set by the registry; takes priority over `MUNCHKINS_CLI`)
+- New file: `packages/munchkins-core/src/builder/agent-cli.ts`
+- New file: `packages/munchkins-core/src/builder/agent-cli.test.ts`
+
+**Lines added:** +484 (across 8 files)
+
+**Files changed:**
+- AGENTS.md
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/agent-cli.ts (new)
+- packages/munchkins-core/src/builder/agent-cli.test.ts (new)
+- packages/munchkins-core/src/builder/index.ts
+- packages/munchkins-core/src/builder/spawn-claude.ts
+- packages/munchkins-core/src/registry/registry.ts
+- packages/munchkins-core/src/registry/registry.test.ts
+- packages/munchkins-core/src/run-log.ts
+- packages/munchkins-core/src/run-log.test.ts
+
+---
 ## feat(core): human-readable run names from LLM slug
 **2026-05-08 20:29 PDT · feat-small · 1077.4s · $9.3383**
 
