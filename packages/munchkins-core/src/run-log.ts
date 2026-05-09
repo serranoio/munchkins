@@ -244,22 +244,6 @@ export class RunLog {
     );
   }
 
-  finalize(
-    stepIndex: number,
-    kind: "pass" | "fail",
-    entries: { command: string; exitCode: number; output: string }[],
-  ): void {
-    const prefix = `step-${pad(stepIndex + 1)}-finalize-${kind}`;
-    writeFileSync(join(this.dir, `${prefix}.log`), formatCommandEntries(entries));
-    this.writeEvent({
-      type: "finalize",
-      stepIndex,
-      kind,
-      commandCount: entries.length,
-      exitCodes: entries.map((e) => e.exitCode),
-    });
-  }
-
   finish(args: {
     worktreePath: string;
     branch: string;

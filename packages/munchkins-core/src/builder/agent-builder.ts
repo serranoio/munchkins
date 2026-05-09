@@ -12,7 +12,6 @@ import { spawnClaude } from "./spawn-claude.js";
 const C = {
   agent: "\x1b[36m",
   deterministic: "\x1b[33m",
-  finalize: "\x1b[35m",
   pass: "\x1b[32m",
   fail: "\x1b[31m",
   dim: "\x1b[2m",
@@ -32,13 +31,7 @@ type DeterministicStep = {
   commands: string[];
   loop?: { maxIterations: number; fixer: Prompt };
 };
-type FinalizeStep = {
-  kind: "finalize";
-  commands: string[];
-  onPass: string[];
-  onFail: string[];
-};
-type Step = AgentStep | DeterministicStep | FinalizeStep;
+type Step = AgentStep | DeterministicStep;
 
 export interface RunResult {
   worktreePath: string;
@@ -96,16 +89,6 @@ export class AgentBuilder {
         }
       : undefined;
     this.steps.push({ kind: "deterministic", commands, loop });
-    return this;
-  }
-
-  finalize(commands: string[], opts?: { onPass?: string[]; onFail?: string[] }): this {
-    this.steps.push({
-      kind: "finalize",
-      commands,
-      onPass: opts?.onPass ?? [],
-      onFail: opts?.onFail ?? [],
-    });
     return this;
   }
 
@@ -173,7 +156,6 @@ export class AgentBuilder {
     }
 
     let failureReason: string | undefined;
-    let finalizeStep: FinalizeStep | undefined;
 
     try {
       for (let i = 0; i < this.steps.length; i++) {
@@ -183,38 +165,11 @@ export class AgentBuilder {
             banner("agent", `Step ${i + 1}/${this.steps.length} — agent`);
           }
           await this.runAgent(step, cwd, repoRoot, runLog, i, verbose, streamOutput);
-        } else if (step.kind === "deterministic") {
+        } else {
           if (verbose) {
             banner("deterministic", `Step ${i + 1}/${this.steps.length} — deterministic`);
           }
           await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, verbose, streamOutput);
-        } else {
-          if (verbose) {
-            banner("finalize", `Step ${i + 1}/${this.steps.length} — finalize`);
-          }
-          finalizeStep = step;
-          const entries: { command: string; exitCode: number; output: string }[] = [];
-          for (const cmd of step.commands) {
-            if (verbose) console.log(`${C.deterministic}  $ ${cmd}${C.reset}`);
-            const r = await $`${{ raw: cmd }}`.cwd(cwd).env(env).nothrow().quiet();
-            const output = r.stdout.toString() + r.stderr.toString();
-            if (verbose && output.trim()) process.stdout.write(output);
-            entries.push({ command: cmd, exitCode: r.exitCode ?? 0, output });
-            if (r.exitCode !== 0) {
-              runLog.finalize(i, "fail", entries);
-              throw new Error(
-                `finalize command failed: ${cmd}\n${r.stderr.toString().slice(-2000)}`,
-              );
-            }
-          }
-          if (entries.length > 0) {
-            runLog.finalize(i, "pass", entries);
-            if (!verbose) {
-              process.stdout.write(
-                `[${this.name}] step ${i + 1}/${this.steps.length} (finalize): pass\n`,
-              );
-            }
-          }
         }
       }
     } catch (err) {
@@ -282,14 +237,7 @@ export class AgentBuilder {
     if (!failureReason) {
       if (verbose) {
         banner("pass", "PASS");
-        for (const cmd of finalizeStep?.onPass ?? []) {
-          console.log(`${C.pass}  $ ${cmd}${C.reset}`);
-          await $`${{ raw: cmd }}`.cwd(repoRoot).env(env);
-        }
       } else {
-        for (const cmd of finalizeStep?.onPass ?? []) {
-          await $`${{ raw: cmd }}`.cwd(repoRoot).env(env).quiet();
-        }
         const cost = runLog.getCostUsd();
         const costStr = cost === undefined ? "—" : `$${cost.toFixed(4)}`;
         const tokenStr = `${runLog.getTokensIn()}→${runLog.getTokensOut()}`;
@@ -307,21 +255,7 @@ export class AgentBuilder {
       if (verbose) {
         banner("fail", "FAIL");
         console.error(`${C.dim}reason:   ${failureReason}${C.reset}`);
-        for (const cmd of finalizeStep?.onFail ?? []) {
-          console.log(`${C.fail}  $ ${cmd}${C.reset}`);
-          await $`${{ raw: cmd }}`
-            .cwd(repoRoot)
-            .env({ ...env, FAILURE_REASON: failureReason })
-            .nothrow();
-        }
       } else {
-        for (const cmd of finalizeStep?.onFail ?? []) {
-          await $`${{ raw: cmd }}`
-            .cwd(repoRoot)
-            .env({ ...env, FAILURE_REASON: failureReason })
-            .nothrow()
-            .quiet();
-        }
         process.stderr.write(`[${this.name}] FAIL — ${failureReason}\n`);
         if (sandboxHandle) {
           process.stderr.write(`  worktree: ${sandboxHandle.cwd}\n`);
@@ -468,7 +402,7 @@ export class AgentBuilder {
         banner("agent", `Step ${i + 1}/${this.steps.length} — agent (resolved)`);
         const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
         printInvocation(systemPrompt, userPrompt);
-      } else if (step.kind === "deterministic") {
+      } else {
         banner("deterministic", `Step ${i + 1}/${this.steps.length} — deterministic`);
         for (const cmd of step.commands) {
           console.log(`${C.deterministic}  $ ${cmd}${C.reset}`);
@@ -490,16 +424,6 @@ export class AgentBuilder {
             `${C.dim}  fixer user prompt: <constructed at run time from the failing command's output>${C.reset}`,
           );
         }
-      } else {
-        banner("finalize", `Step ${i + 1}/${this.steps.length} — finalize`);
-        if (step.commands.length > 0) {
-          console.log(`${C.dim}  body:${C.reset}`);
-          for (const cmd of step.commands) console.log(`${C.deterministic}    $ ${cmd}${C.reset}`);
-        }
-        console.log(`${C.dim}  on pass:${C.reset}`);
-        for (const cmd of step.onPass) console.log(`${C.pass}    $ ${cmd}${C.reset}`);
-        console.log(`${C.dim}  on fail:${C.reset}`);
-        for (const cmd of step.onFail) console.log(`${C.fail}    $ ${cmd}${C.reset}`);
       }
     }
 
