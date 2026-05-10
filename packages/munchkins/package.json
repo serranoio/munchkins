@@ -4,6 +4,11 @@
   "private": false,
   "type": "module",
   "main": "src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/serranoio/munchkins.git",
+    "directory": "packages/munchkins"
+  },
   "publishConfig": {
     "access": "public"
   },
