@@ -4,6 +4,17 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## fix(feat-small): swap new-surface section for manual-test recipe
+**2026-05-09 19:49 PDT · bug-fix · 261.2s · $1.6490**
+
+**Goal:** Replace the feat-small summary writer's `New surface` catalog with a `How to test manually` section so changelog entries give operators a concrete smoke-test recipe.
+
+**Outcome:** Rewrote `packages/munchkins/agents/feat-small/prompts/summary-writer.md`. Deleted the `What "new surface" means` section and its category bullets, retargeted the framing paragraph at giving operators a manual smoke-test recipe, swapped the template's `New surface` block (and the now-redundant `Lines added` line) for a required `How to test manually` block with guidance on covering happy path plus an edge case and a fallback string for non-runtime features, and kept the `Files changed` block. Output contract, JSON envelope, no-headings-in-body rule, and `feat(<scope>): <subject>` commit format are unchanged. Default and refactor summary writers were not touched.
+
+**Files changed:**
+- packages/munchkins/agents/feat-small/prompts/summary-writer.md
+
+---
 ## fix(builder): tolerate duplicate JSON envelope from summary writer
 **2026-05-09 19:17 PDT · bug-fix · 477.2s · $3.4697**
 
