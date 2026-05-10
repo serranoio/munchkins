@@ -6,6 +6,7 @@ import { RunLog } from "../run-log.js";
 import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
 import { renameBranch } from "../worktree.js";
 import { AgentCLI } from "./agent-cli.js";
+import { parseSummaryWriterJson } from "./parse-summary-writer-json.js";
 import { Prompt } from "./prompt.js";
 import { banner, C, printInvocation, RunLogger } from "./run-logger.js";
 import { deriveSlugDeterministic, getSlugWithRetry, type SlugResult } from "./slug.js";
@@ -399,28 +400,9 @@ export class AgentBuilder {
     runLog.accumulateUsage(r.usage);
     runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
 
-    let cleaned = r.output.trimEnd();
-    if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3).trimEnd();
-    const jsonMatch = cleaned.match(/\{[\s\S]*"commitMessage"[\s\S]*\}\s*$/);
-    if (!jsonMatch) {
-      return {
-        failureReason: `summary writer JSON unparseable: no JSON object with "commitMessage" found in output`,
-      };
-    }
-
-    let parsed: { commitMessage?: unknown; markdown?: unknown };
-    try {
-      parsed = JSON.parse(jsonMatch[0]) as { commitMessage?: unknown; markdown?: unknown };
-    } catch (err) {
-      return {
-        failureReason: `summary writer JSON unparseable: ${(err as Error).message}`,
-      };
-    }
-
-    if (typeof parsed.commitMessage !== "string" || typeof parsed.markdown !== "string") {
-      return {
-        failureReason: `summary writer JSON unparseable: commitMessage and markdown must both be strings`,
-      };
+    const parsed = parseSummaryWriterJson(r.output);
+    if (!parsed.ok) {
+      return { failureReason: `summary writer JSON unparseable: ${parsed.reason}` };
     }
 
     runLog.setAgentSummary(parsed.commitMessage, parsed.markdown);
