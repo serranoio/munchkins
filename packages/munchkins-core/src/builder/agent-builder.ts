@@ -1,25 +1,33 @@
-import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
-import { $ } from "bun";
-import { type IntegrationStrategy, integrateMerge, integratePR } from "../integrate.js";
-import { RunLog } from "../run-log.js";
-import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
-import { renameBranch } from "../worktree.js";
-import { AgentCLI } from "./agent-cli.js";
-import { parseSummaryWriterJson } from "./parse-summary-writer-json.js";
-import { Prompt } from "./prompt.js";
-import { banner, C, printInvocation, RunLogger } from "./run-logger.js";
-import { deriveSlugDeterministic, getSlugWithRetry, type SlugResult } from "./slug.js";
-import { spawnClaude } from "./spawn-claude.js";
+import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
+import { $ } from 'bun';
+import {
+  type IntegrationStrategy,
+  integrateMerge,
+  integratePR,
+} from '../integrate.js';
+import { RunLog } from '../run-log.js';
+import type { SandboxFactory, SandboxHandle } from '../sandbox/sandbox.js';
+import { renameBranch } from '../worktree.js';
+import { AgentCLI } from './agent-cli.js';
+import { parseSummaryWriterJson } from './parse-summary-writer-json.js';
+import { Prompt } from './prompt.js';
+import { banner, C, printInvocation, RunLogger } from './run-logger.js';
+import {
+  deriveSlugDeterministic,
+  getSlugWithRetry,
+  type SlugResult,
+} from './slug.js';
+import { spawnClaude } from './spawn-claude.js';
 
 export interface OptionSchema {
-  type: "string" | "boolean" | "number" | "string[]";
+  type: 'string' | 'boolean' | 'number' | 'string[]';
   required?: boolean;
   description: string;
   default?: string | boolean | number | string[];
 }
 
-export type Verbosity = "default" | "thinking" | "verbose";
+export type Verbosity = 'default' | 'thinking' | 'verbose';
 
 export interface CronConfig {
   spec: string;
@@ -27,9 +35,9 @@ export interface CronConfig {
   verbosity: Verbosity;
 }
 
-type AgentStep = { kind: "agent"; prompt: Prompt };
+type AgentStep = { kind: 'agent'; prompt: Prompt };
 type DeterministicStep = {
-  kind: "deterministic";
+  kind: 'deterministic';
   commands: string[];
   loop?: { maxIterations: number; fixer: Prompt };
 };
@@ -64,19 +72,21 @@ export class AgentBuilder {
 
   option(name: string, schema: OptionSchema): this {
     if (this.options.has(name)) {
-      throw new Error(`Option "${name}" already declared on agent "${this.name}"`);
+      throw new Error(
+        `Option "${name}" already declared on agent "${this.name}"`
+      );
     }
     this.options.set(name, schema);
     return this;
   }
 
   add(prompt: Prompt): this {
-    this.steps.push({ kind: "agent", prompt });
+    this.steps.push({ kind: 'agent', prompt });
     for (const f of prompt.fragments) {
-      if (f.kind !== "input-from-option" || !f.declaration) continue;
+      if (f.kind !== 'input-from-option' || !f.declaration) continue;
       if (this.options.has(f.optionName)) continue;
       this.options.set(f.optionName, {
-        type: "string",
+        type: 'string',
         required: f.declaration.required ?? false,
         description: f.declaration.description,
         default: f.declaration.default,
@@ -87,24 +97,32 @@ export class AgentBuilder {
 
   addDeterministic(
     commands: string[],
-    opts?: { loop?: { maxIterations?: number; fixer?: Prompt } },
+    opts?: { loop?: { maxIterations?: number; fixer?: Prompt } }
   ): this {
     const loop = opts?.loop
       ? {
           maxIterations: opts.loop.maxIterations ?? 3,
-          fixer: opts.loop.fixer ?? new Prompt("docs/subagents/deterministic-fixer.md"),
+          fixer:
+            opts.loop.fixer ??
+            new Prompt('docs/subagents/deterministic-fixer.md'),
         }
       : undefined;
-    this.steps.push({ kind: "deterministic", commands, loop });
+    this.steps.push({ kind: 'deterministic', commands, loop });
     return this;
   }
 
-  summaryWriter(prompt: Prompt): this {
+  summaryWriter(prompt?: Prompt): this {
     this.summaryWriterPrompt = prompt;
     return this;
   }
 
-  integrate(strategy: IntegrationStrategy): this {
+  integrate(strategy?: IntegrationStrategy): this {
+    if (!strategy) {
+      this.integration = integrateMerge();
+
+      return this;
+    }
+
     this.integration = strategy;
     return this;
   }
@@ -166,29 +184,34 @@ export class AgentBuilder {
    * the full pipeline.
    */
   _selectIntegrationStrategy(
-    flag: string | undefined,
-  ): { ok: true; strategy: IntegrationStrategy } | { ok: false; reason: string } {
-    if (flag !== undefined && flag !== "merge" && flag !== "pr") {
+    flag: string | undefined
+  ):
+    | { ok: true; strategy: IntegrationStrategy }
+    | { ok: false; reason: string } {
+    if (flag !== undefined && flag !== 'merge' && flag !== 'pr') {
       return {
         ok: false,
         reason: `unknown integration mode: ${flag}; expected "merge" or "pr"`,
       };
     }
-    if (flag === "pr") return { ok: true, strategy: integratePR() };
-    if (flag === "merge") return { ok: true, strategy: integrateMerge() };
+    if (flag === 'pr') return { ok: true, strategy: integratePR() };
+    if (flag === 'merge') return { ok: true, strategy: integrateMerge() };
     return { ok: true, strategy: this.integration ?? integrateMerge() };
   }
 
-  cron(spec: string, opts: { userMessage: string; verbosity?: Verbosity }): this {
+  cron(
+    spec: string,
+    opts: { userMessage: string; verbosity?: Verbosity }
+  ): this {
     if (this.cronConfig) {
       throw new Error(
-        `cron() already configured on agent "${this.name}" (existing spec: "${this.cronConfig.spec}")`,
+        `cron() already configured on agent "${this.name}" (existing spec: "${this.cronConfig.spec}")`
       );
     }
     this.cronConfig = {
       spec,
       userMessage: opts.userMessage,
-      verbosity: opts.verbosity ?? "default",
+      verbosity: opts.verbosity ?? 'default',
     };
     return this;
   }
@@ -200,13 +223,13 @@ export class AgentBuilder {
   async run(): Promise<RunResult> {
     const repoRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
 
-    if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
+    if (process.env.__MUNCHKINS_OPT_dryRun === 'true') {
       this._printDescribe(repoRoot);
-      return { worktreePath: "", branch: "", succeeded: true };
+      return { worktreePath: '', branch: '', succeeded: true };
     }
 
-    const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
-    const thinking = process.env.__MUNCHKINS_OPT_thinking === "true";
+    const verbose = process.env.__MUNCHKINS_OPT_verbose === 'true';
+    const thinking = process.env.__MUNCHKINS_OPT_thinking === 'true';
     const streamOutput = verbose || thinking;
     const logger = new RunLogger(this.name, verbose);
 
@@ -221,13 +244,20 @@ export class AgentBuilder {
       : Promise.resolve(undefined);
     const slugPromise: Promise<SlugResult> = userMessageText
       ? getSlugWithRetry(userMessageText)
-      : Promise.resolve({ slug: deriveSlugDeterministic(this.name) || this.name });
+      : Promise.resolve({
+          slug: deriveSlugDeterministic(this.name) || this.name,
+        });
 
-    const [slugResult, sandboxResult] = await Promise.all([slugPromise, sandboxPromise]);
+    const [slugResult, sandboxResult] = await Promise.all([
+      slugPromise,
+      sandboxPromise,
+    ]);
     sandboxHandle = sandboxResult;
 
     if (sandboxHandle) {
-      const finalBranch = `agent/${slugResult.slug}-${crypto.randomUUID().slice(0, 8)}`;
+      const finalBranch = `agent/${slugResult.slug}-${crypto
+        .randomUUID()
+        .slice(0, 8)}`;
       await renameBranch(sandboxHandle.env.BRANCH, finalBranch, repoRoot);
       sandboxHandle.env.BRANCH = finalBranch;
       cwd = sandboxHandle.cwd;
@@ -240,7 +270,7 @@ export class AgentBuilder {
     const runLog = new RunLog(repoRoot, this.name, { slug: slugResult.slug });
     if (slugResult.fallback) {
       runLog.recordEvent({
-        type: "slug-fallback",
+        type: 'slug-fallback',
         attempts: slugResult.fallback.attempts,
         lastError: slugResult.fallback.lastError,
         slug: slugResult.slug,
@@ -256,10 +286,27 @@ export class AgentBuilder {
       for (let i = 0; i < this.steps.length; i++) {
         const step = this.steps[i];
         logger.stepBanner(i, this.steps.length, step.kind);
-        if (step.kind === "agent") {
-          await this.runAgent(step, cwd, repoRoot, runLog, i, logger, streamOutput);
+        if (step.kind === 'agent') {
+          await this.runAgent(
+            step,
+            cwd,
+            repoRoot,
+            runLog,
+            i,
+            logger,
+            streamOutput
+          );
         } else {
-          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, logger, streamOutput);
+          await this.runDeterministic(
+            step,
+            cwd,
+            repoRoot,
+            env,
+            runLog,
+            i,
+            logger,
+            streamOutput
+          );
         }
       }
     } catch (err) {
@@ -275,7 +322,7 @@ export class AgentBuilder {
         repoRoot,
         runLog,
         logger,
-        streamOutput,
+        streamOutput
       );
       if (writerResult.failureReason) {
         failureReason = writerResult.failureReason;
@@ -287,12 +334,16 @@ export class AgentBuilder {
     // Integration phase — strategy precedence: operator flag > author > default.
     let prUrl: string | undefined;
     if (sandboxHandle && !failureReason) {
-      const selection = this._selectIntegrationStrategy(process.env.__MUNCHKINS_OPT_integrate);
+      const selection = this._selectIntegrationStrategy(
+        process.env.__MUNCHKINS_OPT_integrate
+      );
       if (!selection.ok) {
         failureReason = selection.reason;
       } else {
         const strategy = selection.strategy;
-        const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
+        const baseBranch = (
+          await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet()
+        )
           .text()
           .trim();
         const result = await strategy.run({
@@ -302,7 +353,7 @@ export class AgentBuilder {
           baseBranch,
           cli: AgentCLI.fromEnv(),
           postFixChecks: collectPostFixChecks(this.steps),
-          originalGoal: userMessageText ?? "",
+          originalGoal: userMessageText ?? '',
           commitMessage: runLog.getAgentSummaryCommitMessage() ?? commitMessage,
           markdownSummary: runLog.getAgentSummaryMarkdown(),
           log: (line) => logger.integrationLine(line),
@@ -314,7 +365,7 @@ export class AgentBuilder {
               info.userPrompt,
               info.response,
               info.exitCode,
-              info.durationMs,
+              info.durationMs
             ),
         });
 
@@ -328,8 +379,10 @@ export class AgentBuilder {
 
     // Teardown is now cleanup-only.
     if (sandboxHandle) {
-      const initialOutcome = failureReason ? "fail" : "pass";
-      const teardownResult = await sandboxHandle.teardown(initialOutcome, { failureReason });
+      const initialOutcome = failureReason ? 'fail' : 'pass';
+      const teardownResult = await sandboxHandle.teardown(initialOutcome, {
+        failureReason,
+      });
       if (!teardownResult.ok) {
         failureReason = teardownResult.reason;
       }
@@ -350,8 +403,8 @@ export class AgentBuilder {
       logger.fail(failureReason, sandboxHandle);
     }
 
-    const worktreePath = sandboxHandle?.cwd ?? "";
-    const branch = sandboxHandle?.env.BRANCH ?? "";
+    const worktreePath = sandboxHandle?.cwd ?? '';
+    const branch = sandboxHandle?.env.BRANCH ?? '';
 
     const summary = runLog.finish({
       worktreePath,
@@ -374,7 +427,7 @@ export class AgentBuilder {
     repoRoot: string,
     runLog: RunLog,
     logger: RunLogger,
-    streamOutput: boolean,
+    streamOutput: boolean
   ): Promise<{ failureReason?: string; commitMessage?: string }> {
     const diff = await sandboxHandle.diff?.();
     if (!diff?.trim()) {
@@ -383,7 +436,11 @@ export class AgentBuilder {
     }
 
     const originalGoal = resolveOriginalGoal(repoRoot);
-    const userPrompt = buildSummaryWriterUserPrompt(originalGoal, ["```", diff, "```"]);
+    const userPrompt = buildSummaryWriterUserPrompt(originalGoal, [
+      '```',
+      diff,
+      '```',
+    ]);
 
     const resolved = this.summaryWriterPrompt?.resolve(repoRoot);
     if (!resolved) return {};
@@ -392,17 +449,30 @@ export class AgentBuilder {
     logger.summaryWriterStart(systemPrompt, userPrompt);
 
     const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
+    const r = await spawnClaude({
+      systemPrompt,
+      userPrompt,
+      cwd,
+      stream: streamOutput,
+    });
     const durationMs = Date.now() - startTime;
 
     logger.stepResultOk(durationMs, r.usage);
 
     runLog.accumulateUsage(r.usage);
-    runLog.summaryStep(systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
+    runLog.summaryStep(
+      systemPrompt,
+      userPrompt,
+      r.output,
+      r.exitCode,
+      durationMs
+    );
 
     const parsed = parseSummaryWriterJson(r.output);
     if (!parsed.ok) {
-      return { failureReason: `summary writer JSON unparseable: ${parsed.reason}` };
+      return {
+        failureReason: `summary writer JSON unparseable: ${parsed.reason}`,
+      };
     }
 
     runLog.setAgentSummary(parsed.commitMessage, parsed.markdown);
@@ -410,28 +480,37 @@ export class AgentBuilder {
     const changelogPath = runLog.prependChangelogIn(cwd);
     if (changelogPath && sandboxHandle) {
       await $`git add ${changelogPath}`.cwd(cwd).quiet();
-      await $`git commit -m ${`docs(changelog): ${parsed.commitMessage}`}`.cwd(cwd).quiet();
+      await $`git commit -m ${`docs(changelog): ${parsed.commitMessage}`}`
+        .cwd(cwd)
+        .quiet();
     }
 
     return { commitMessage: parsed.commitMessage };
   }
 
   private _printDescribe(repoRoot: string): void {
-    banner("agent", `Dry run — ${this.name}`);
-    if (this.description) console.log(`${C.dim}description: ${this.description}${C.reset}`);
+    banner('agent', `Dry run — ${this.name}`);
+    if (this.description)
+      console.log(`${C.dim}description: ${this.description}${C.reset}`);
     console.log(`${C.dim}repoRoot:    ${repoRoot}${C.reset}`);
     console.log(
-      `${C.dim}sandbox:     ${this.sandbox !== undefined ? "configured" : "none — runs in repoRoot, no isolation"}${C.reset}`,
+      `${C.dim}sandbox:     ${
+        this.sandbox !== undefined
+          ? 'configured'
+          : 'none — runs in repoRoot, no isolation'
+      }${C.reset}`
     );
     if (this.options.size > 0) {
       console.log(`${C.dim}options:${C.reset}`);
       for (const [name, schema] of this.options) {
         const envKey = `__MUNCHKINS_OPT_${name}`;
         const raw = process.env[envKey];
-        const display = raw === undefined ? "(unset)" : raw;
+        const display = raw === undefined ? '(unset)' : raw;
         const flag = name.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
         console.log(
-          `${C.dim}  --${flag}${schema.required ? " (required)" : ""}: ${display}${C.reset}`,
+          `${C.dim}  --${flag}${
+            schema.required ? ' (required)' : ''
+          }: ${display}${C.reset}`
         );
       }
     }
@@ -439,41 +518,51 @@ export class AgentBuilder {
 
     for (let i = 0; i < this.steps.length; i++) {
       const step = this.steps[i];
-      if (step.kind === "agent") {
-        banner("agent", `Step ${i + 1}/${this.steps.length} — agent (resolved)`);
+      if (step.kind === 'agent') {
+        banner(
+          'agent',
+          `Step ${i + 1}/${this.steps.length} — agent (resolved)`
+        );
         const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
         printInvocation(systemPrompt, userPrompt);
       } else {
-        banner("deterministic", `Step ${i + 1}/${this.steps.length} — deterministic`);
+        banner(
+          'deterministic',
+          `Step ${i + 1}/${this.steps.length} — deterministic`
+        );
         for (const cmd of step.commands) {
           console.log(`${C.deterministic}  $ ${cmd}${C.reset}`);
         }
         if (step.loop) {
           console.log(
-            `${C.dim}  loop: max ${step.loop.maxIterations} iterations; on failure invokes the fixer subagent below.${C.reset}`,
+            `${C.dim}  loop: max ${step.loop.maxIterations} iterations; on failure invokes the fixer subagent below.${C.reset}`
           );
           const { systemPrompt } = step.loop.fixer.resolve(repoRoot);
-          console.log(`${C.dim}┌─ fixer system prompt ───────────────────────${C.reset}`);
+          console.log(
+            `${C.dim}┌─ fixer system prompt ───────────────────────${C.reset}`
+          );
           console.log(
             systemPrompt
-              .split("\n")
+              .split('\n')
               .map((l) => `${C.dim}│${C.reset} ${l}`)
-              .join("\n"),
+              .join('\n')
           );
-          console.log(`${C.dim}└─────────────────────────────────────────────${C.reset}`);
           console.log(
-            `${C.dim}  fixer user prompt: <constructed at run time from the failing command's output>${C.reset}`,
+            `${C.dim}└─────────────────────────────────────────────${C.reset}`
+          );
+          console.log(
+            `${C.dim}  fixer user prompt: <constructed at run time from the failing command's output>${C.reset}`
           );
         }
       }
     }
 
     if (this.summaryWriterPrompt) {
-      banner("agent", "Summary writer phase (resolved)");
+      banner('agent', 'Summary writer phase (resolved)');
 
       const originalGoal = resolveOriginalGoal(repoRoot);
       const userPromptPreview = buildSummaryWriterUserPrompt(originalGoal, [
-        "<constructed at run time from sandbox.diff()>",
+        '<constructed at run time from sandbox.diff()>',
       ]);
 
       const { systemPrompt } = this.summaryWriterPrompt.resolve(repoRoot);
@@ -481,32 +570,38 @@ export class AgentBuilder {
       console.log(`${C.dim}  user prompt template:${C.reset}`);
       console.log(
         userPromptPreview
-          .split("\n")
+          .split('\n')
           .map((l) => `${C.dim}    ${l}${C.reset}`)
-          .join("\n"),
+          .join('\n')
       );
       console.log();
-      console.log(`${C.dim}┌─ system prompt ─────────────────────────────${C.reset}`);
+      console.log(
+        `${C.dim}┌─ system prompt ─────────────────────────────${C.reset}`
+      );
       console.log(
         systemPrompt
-          .split("\n")
+          .split('\n')
           .map((l) => `${C.dim}│${C.reset} ${l}`)
-          .join("\n"),
+          .join('\n')
       );
-      console.log(`${C.dim}└─────────────────────────────────────────────${C.reset}`);
+      console.log(
+        `${C.dim}└─────────────────────────────────────────────${C.reset}`
+      );
     } else {
       console.log(
-        `${C.dim}Summary writer: (none — no .summaryWriter() declared on this agent)${C.reset}`,
+        `${C.dim}Summary writer: (none — no .summaryWriter() declared on this agent)${C.reset}`
       );
     }
 
     const integrationKind =
-      process.env.__MUNCHKINS_OPT_integrate ?? this.integration?.kind ?? "merge";
+      process.env.__MUNCHKINS_OPT_integrate ??
+      this.integration?.kind ??
+      'merge';
     console.log(`${C.dim}integration: ${integrationKind}${C.reset}`);
 
     banner(
-      "pass",
-      "DRY RUN COMPLETE — no Claude invoked, no worktree created, no summary writer invoked, no merge",
+      'pass',
+      'DRY RUN COMPLETE — no Claude invoked, no worktree created, no summary writer invoked, no merge'
     );
   }
 
@@ -517,15 +612,32 @@ export class AgentBuilder {
     runLog: RunLog,
     stepIndex: number,
     logger: RunLogger,
-    streamOutput: boolean,
+    streamOutput: boolean
   ): Promise<void> {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
-    logger.agentStepStart(stepIndex, this.steps.length, systemPrompt, userPrompt);
+    logger.agentStepStart(
+      stepIndex,
+      this.steps.length,
+      systemPrompt,
+      userPrompt
+    );
     const startTime = Date.now();
-    const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
+    const r = await spawnClaude({
+      systemPrompt,
+      userPrompt,
+      cwd,
+      stream: streamOutput,
+    });
     const durationMs = Date.now() - startTime;
     logger.stepResultOk(durationMs, r.usage);
-    runLog.agentStep(stepIndex, systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
+    runLog.agentStep(
+      stepIndex,
+      systemPrompt,
+      userPrompt,
+      r.output,
+      r.exitCode,
+      durationMs
+    );
     runLog.accumulateUsage(r.usage);
     if (r.exitCode !== 0) {
       throw new Error(`agent step failed (exit ${r.exitCode})`);
@@ -540,14 +652,15 @@ export class AgentBuilder {
     runLog: RunLog,
     stepIndex: number,
     logger: RunLogger,
-    streamOutput: boolean,
+    streamOutput: boolean
   ): Promise<void> {
     const max = step.loop?.maxIterations ?? 1;
-    let lastOutput = "";
+    let lastOutput = '';
     for (let i = 1; i <= max; i++) {
       logger.deterministicIterationHeader(i, max);
       let allPassed = true;
-      const entries: { command: string; exitCode: number; output: string }[] = [];
+      const entries: { command: string; exitCode: number; output: string }[] =
+        [];
       for (const cmd of step.commands) {
         logger.deterministicCommand(cmd);
         const r = await $`${{ raw: cmd }}`.cwd(cwd).env(env).nothrow().quiet();
@@ -562,17 +675,30 @@ export class AgentBuilder {
       }
       runLog.deterministicIteration(stepIndex, i, entries);
 
-      logger.deterministicQuietSummary(stepIndex, this.steps.length, i, max, entries);
+      logger.deterministicQuietSummary(
+        stepIndex,
+        this.steps.length,
+        i,
+        max,
+        entries
+      );
 
       if (allPassed) return;
       if (step.loop && i < max) {
         const fixer = step.loop.fixer.withUserMessage(
-          `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(-4000)}`,
+          `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(
+            -4000
+          )}`
         );
         const { systemPrompt, userPrompt } = fixer.resolve(repoRoot);
         logger.fixerStart(i, systemPrompt, userPrompt);
         const startTime = Date.now();
-        const r = await spawnClaude({ systemPrompt, userPrompt, cwd, stream: streamOutput });
+        const r = await spawnClaude({
+          systemPrompt,
+          userPrompt,
+          cwd,
+          stream: streamOutput,
+        });
         const durationMs = Date.now() - startTime;
         logger.fixerResult(durationMs, r.usage, r.exitCode);
         runLog.fixerInvocation(
@@ -582,13 +708,15 @@ export class AgentBuilder {
           userPrompt,
           r.output,
           r.exitCode,
-          durationMs,
+          durationMs
         );
         runLog.accumulateUsage(r.usage);
       }
     }
     throw new Error(
-      `deterministic step failed after ${max} iteration(s):\n${lastOutput.slice(-2000)}`,
+      `deterministic step failed after ${max} iteration(s):\n${lastOutput.slice(
+        -2000
+      )}`
     );
   }
 }
@@ -597,24 +725,27 @@ function readUserMessage(repoRoot: string): string | undefined {
   const raw = process.env.__MUNCHKINS_OPT_userMessage;
   if (!raw) return undefined;
   const candidate = isAbsolute(raw) ? raw : join(repoRoot, raw);
-  if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
+  if (existsSync(candidate)) return readFileSync(candidate, 'utf-8');
   return raw;
 }
 
 function resolveOriginalGoal(repoRoot: string): string {
-  return readUserMessage(repoRoot) ?? "(no user message)";
+  return readUserMessage(repoRoot) ?? '(no user message)';
 }
 
-function buildSummaryWriterUserPrompt(originalGoal: string, diffSection: string[]): string {
+function buildSummaryWriterUserPrompt(
+  originalGoal: string,
+  diffSection: string[]
+): string {
   return [
-    "## Original goal",
+    '## Original goal',
     originalGoal,
-    "",
-    "## Staged diff",
+    '',
+    '## Staged diff',
     ...diffSection,
-    "",
-    "Output the JSON envelope.",
-  ].join("\n");
+    '',
+    'Output the JSON envelope.',
+  ].join('\n');
 }
 
 function collectPostFixChecks(steps: Step[]): string[] {
@@ -623,7 +754,7 @@ function collectPostFixChecks(steps: Step[]): string[] {
   // anything they'll fail here too.
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i];
-    if (s.kind === "deterministic") return [...s.commands];
+    if (s.kind === 'deterministic') return [...s.commands];
   }
   return [];
 }
