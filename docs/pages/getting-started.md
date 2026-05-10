@@ -10,7 +10,7 @@ Install munchkins, run a smoke-test agent to prove the pipeline works against a 
    - **`claude`** is the default. Sign in once with `claude` and accept the auth flow.
    - **`codex`** is the alternate backend. Run `codex login` once if you intend to use `--cli=codex`.
 4. **Lint / typecheck / scenario / test scripts** in the host repo's `package.json` (see Install). The deterministic gate calls them by name; any of them can be a no-op, but they must exist.
-5. **Claude Code (optional but recommended).** The fastest path to your first custom agent is the `/new-munchkin` skill, which only runs inside Claude Code. If you don't use Claude Code, you can still build agents by hand — see [`agents/custom.md`](/agents/custom). Required only for the skill, not for running agents.
+5. **Claude Code (optional but recommended).** The fastest path to your first custom agent is the `/new-munchkin` skill, which only runs inside Claude Code. If you don't use Claude Code, you can still build agents by hand — see [Build your own](/agents/custom). Required only for the skill, not for running agents.
 
 The host repo doesn't have to be the munchkins monorepo — any git repo with the package manager and gate scripts described below will do.
 
@@ -94,7 +94,7 @@ What you should see, roughly in order:
 5. **Integration.** Default is `merge`: rebase the worktree onto your branch, then fast-forward your branch to the rebased tip. Worktree and branch are removed on success.
 6. **PASS line.** Total duration, token in/out, dollar cost (or `—` for Codex), the commit message, and the run's log directory.
 
-Run artifacts land under `.munchkins/runs/<slug>-<short-id>/` — see [`agents/custom.md`](/agents/custom) for the full layout. If a run fails, the worktree and branch are preserved at the printed path; clean up with `git worktree remove <path>`, which deletes both.
+Run artifacts land under `.munchkins/runs/<slug>-<short-id>/` — see [Build your own](/agents/custom) for the full layout. If a run fails, the worktree and branch are preserved at the printed path; clean up with `git worktree remove <path>`, which deletes both.
 
 ## Scaffold your first agent for this repo
 
