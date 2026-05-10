@@ -4,6 +4,34 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(docs): re-orient onboarding around the new-munchkin skill (deb5605)
+**2026-05-10 14:10 PDT · feat-small · 458.8s · $3.2744**
+
+**Goal:** Re-orient the docs onboarding so the `new-munchkin` skill is the destination, with the bug-fix run demoted to a proof-of-life smoke test.
+
+**Outcome:** Restructured `docs/pages/getting-started.md` into six sections (Prerequisites, Install, Proof of life, Scaffold your first agent, Next steps), added a fifth Claude Code prerequisite, surfaced `bun run munchkins skills install`, and compressed the artifact tree and failure recovery to one-liners. Updated `docs/pages/index.mdx` to drop the working-guide line, split the CTA row into Defaults vs. Build-your-own, and rewrite the Get-started gloss. Reordered `docs/pages/agents/custom.md` so the `new-munchkin` skill section leads (now 3 paragraphs covering trigger phrases, repo introspection, and create-mode outputs) and the manual path follows. Reordered `docs/pages/agents/_meta.json` so `custom` is first.
+
+**How to test manually:**
+
+1. From the repo root, run `bun run docs:dev` and open the docs site in a browser.
+2. Land on `/` and confirm the lede now reads "The default agents are working examples…"; verify the CTA row shows three lines: `Get started`, `Defaults (reference): …`, and `Build your own: /new-munchkin skill · AgentBuilder API`. The headline and proof-tail should be unchanged.
+3. Click `Get started`. Confirm the page has six top-level `##` headings in this exact order: Prerequisites, Install, Proof of life: run the bug-fix agent, Scaffold your first agent for this repo, Next steps. (Plus the `# Getting started` title.) The old "Where the artifacts go" tree and "If it fails" subsection should be gone.
+4. In Prerequisites, confirm there are five items and the fifth names Claude Code as optional.
+5. In Install, confirm `"munchkins": "munchkins"` is the only script line shown, the `bunx` alternative is mentioned in one sentence, and `bun run munchkins skills install` appears exactly once.
+6. In the new "Scaffold your first agent" section, confirm `/new-munchkin` (with the slash) is shown in a fenced block and the three create-mode bullets are present.
+7. Click into Agents from the sidebar. Confirm the order is `Build your own`, `Bug fix`, `Small feature`, `Refactor`.
+8. Open `Build your own`. Confirm the first `##` after the title is "Scaffold with the `new-munchkin` skill" and contains 3 paragraphs; the second `##` is "What you're building" and starts with the bridging sentence about the manual path.
+9. Edge case: grep the rendered docs for the deleted line `This site is a working guide to the framework` — it should return zero hits. Also grep `getting-started.md` to confirm `/new-munchkin` appears at least once and `bun run munchkins skills install` appears exactly once.
+10. Run `bun run munchkins skills install --dest /tmp/munchkins-skills-test` and confirm the bundled skills land at the override path — this validates that the new Install step works as documented.
+
+**Files changed:**
+
+- docs/pages/getting-started.md
+- docs/pages/index.mdx
+- docs/pages/agents/custom.md
+- docs/pages/agents/_meta.json
+
+---
 ## docs(pages): add user-facing agent guide organized by agent (a01c8fb)
 **2026-05-10 13:31 PDT · feat-small · 445.7s · $7.0202**
 
