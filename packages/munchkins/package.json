@@ -1,9 +1,12 @@
 {
   "name": "@serranolabs.io/munchkins",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
   "main": "src/index.ts",
+  "bin": {
+    "munchkins": "./src/index.ts"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/serranoio/munchkins.git",

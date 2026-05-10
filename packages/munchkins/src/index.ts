@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 export * from "@serranolabs.io/munchkins-core";
 import "../agents/bugfix/bugfix-agent.js";
 import "../agents/feat-small/feat-small-agent.js";
