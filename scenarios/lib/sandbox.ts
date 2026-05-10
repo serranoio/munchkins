@@ -20,6 +20,8 @@ export async function createSandbox(seedRepoDir: string): Promise<Sandbox> {
     GIT_COMMITTER_EMAIL: "harness@local",
   };
   await $`git init -b main`.cwd(path).env(env).quiet();
+  await $`git config user.email harness@local`.cwd(path).env(env).quiet();
+  await $`git config user.name harness`.cwd(path).env(env).quiet();
   await $`git add -A`.cwd(path).env(env).quiet();
   await $`git commit -m "seed"`.cwd(path).env(env).quiet();
 

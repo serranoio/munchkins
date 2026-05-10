@@ -60,6 +60,8 @@ async function run(): Promise<ScenarioResult> {
       GIT_COMMITTER_EMAIL: "harness@local",
     };
     await $`git init -b main`.cwd(repoRoot).env(env).quiet();
+    await $`git config user.email harness@local`.cwd(repoRoot).env(env).quiet();
+    await $`git config user.name harness`.cwd(repoRoot).env(env).quiet();
     await Bun.write(join(repoRoot, "seed.ts"), "export const seed = 1;\n");
     await $`git add -A`.cwd(repoRoot).env(env).quiet();
     await $`git commit -m seed`.cwd(repoRoot).env(env).quiet();
