@@ -4,6 +4,40 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## docs(pages): add user-facing agent guide organized by agent (a01c8fb)
+**2026-05-10 13:31 PDT · feat-small · 445.7s · $7.0202**
+
+**Goal:** Replace the thin Rspress site with a full user-facing guide where each default agent has its own self-contained page, plus getting-started and custom-agent pages.
+
+**Outcome:** Added `getting-started.md`, `agents/{bug-fix,feat-small,refactor,custom}.md`, and `agents/_meta.json`; rewrote `index.mdx` as a real landing page; updated root `_meta.json` to surface the new sections. The three default-agent pages each follow the 14-section skeleton (substantive content, intentional repetition for self-containment); `custom.md` covers every public method on `AgentBuilder` and `Prompt`. Also bumped two `agent-builder.test.ts` integration tests to a 30s timeout so the real-git E2E cases don't graze the default 5s limit under parallel load.
+
+**How to test manually:**
+
+1. From the repo root, run `PUBLIC_DOCS=true bun run docs:build` and confirm it exits 0. Verify the four agent pages and `getting-started` are emitted under `docs/doc_build/` (or wherever Rspress writes output) and that `internal/**` is excluded.
+2. Run `bun --cwd docs run dev` and open the site in a browser. Confirm the sidebar order: `Home`, `Getting started`, `Agents` (expandable to `Bug fix`, `Small feature`, `Refactor`, `Build your own`), `Changelog`. The `Internal` section should still render in dev mode.
+3. From the home page, click **Get started** — expect to land on `/getting-started`. Click **Bug fix** — expect `/agents/bug-fix`. Each default-agent page should scroll through all 14 sections in order (What it does → Worked example).
+4. On `/agents/bug-fix`, ctrl-F for `--user-message`, `--cli`, `--integrate`, `--dry-run`, `--thinking`, `--verbose` — all six must appear in the Flags table. Repeat on `feat-small.md` and `refactor.md`.
+5. On `/agents/custom`, ctrl-F for each `AgentBuilder` method (`option`, `add`, `addDeterministic`, `summaryWriter`, `integrate`, `setSandbox`, `rename`, `describe`, `thenRun`, `cron`, `run`, `runFromState`) and each `Prompt` method (`withSystem`, `withUserMessage`, `withUserMessageFromOption`). All must be present. Confirm `launch-munchkin` and `new-munchkin` are both referenced.
+6. Search across all four new pages for `MUNCHKINS_CLI`, `MUNCHKINS_RUN_LOG_DIR`, and `MUNCHKINS_CHANGELOG_PATH` — each env var should appear at least once across the set.
+7. Confirm `bun run munchkins resume --list | --latest | <id>` syntax appears in each of the three default-agent pages, and `bun run munchkins daemon` + `.cron()` appear in all three default-agent pages and in `custom.md`. `bun run munchkins skills install [--dest <path>]` should appear in `custom.md`.
+8. Run `bun run lint`, `bun run typecheck`, and `bun run scenario` from the repo root — all should pass. (The deterministic gate in CI does this automatically.)
+9. Edge case: open `docs/pages/changelog.md` and `docs/pages/internal/**` in git — confirm they are unchanged by this commit (`git diff HEAD~1 -- docs/pages/changelog.md docs/pages/internal/`).
+10. Edge case: run `bun test packages/munchkins-core/src/builder/agent-builder.test.ts` and confirm the two integration tests in `AgentBuilder.run integration dispatch end-to-end` pass without timeout warnings.
+
+**Files changed:**
+
+- docs/pages/_meta.json
+- docs/pages/index.mdx
+- docs/pages/getting-started.md
+- docs/pages/agents/_meta.json
+- docs/pages/agents/bug-fix.md
+- docs/pages/agents/feat-small.md
+- docs/pages/agents/refactor.md
+- docs/pages/agents/custom.md
+- packages/munchkins-core/src/builder/agent-builder.test.ts
+
+---
+
 ## feat(agent-cli): wait for Claude rate-limit reset and retry once (c7e4fa8)
 **2026-05-10 13:00 PDT · feat-small · 742.8s · $4.0512**
 
