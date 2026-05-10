@@ -5,6 +5,21 @@
     "label": "Home"
   },
   {
+    "type": "file",
+    "name": "getting-started",
+    "label": "Getting started"
+  },
+  {
+    "type": "dir",
+    "name": "agents",
+    "label": "Agents"
+  },
+  {
+    "type": "file",
+    "name": "changelog",
+    "label": "Changelog"
+  },
+  {
     "type": "dir",
     "name": "internal",
     "label": "Internal (dev only)"

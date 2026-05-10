@@ -1,0 +1,22 @@
+[
+  {
+    "type": "file",
+    "name": "bug-fix",
+    "label": "Bug fix"
+  },
+  {
+    "type": "file",
+    "name": "feat-small",
+    "label": "Small feature"
+  },
+  {
+    "type": "file",
+    "name": "refactor",
+    "label": "Refactor"
+  },
+  {
+    "type": "file",
+    "name": "custom",
+    "label": "Build your own"
+  }
+]
