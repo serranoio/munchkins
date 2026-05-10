@@ -26,6 +26,8 @@ async function createRepo(branch: string): Promise<Repo> {
   const path = mkdtempSync(join(tmpdir(), "munchkins-sb-test-"));
   const env = gitEnv();
   await $`git init -b ${branch}`.cwd(path).env(env).quiet();
+  await $`git config user.email t@t`.cwd(path).env(env).quiet();
+  await $`git config user.name t`.cwd(path).env(env).quiet();
   await Bun.write(join(path, "seed.ts"), "export const seed = 1;\n");
   await $`git add -A`.cwd(path).env(env).quiet();
   await $`git commit -m seed`.cwd(path).env(env).quiet();
