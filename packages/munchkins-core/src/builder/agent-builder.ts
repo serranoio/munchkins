@@ -551,7 +551,12 @@ export class AgentBuilder {
 
     runLog.setAgentSummary(parsed.commitMessage, parsed.markdown);
 
-    const changelogPath = runLog.prependChangelogIn(cwd);
+    // HEAD here points at the agent's last work commit (the docs(changelog)
+    // commit hasn't landed yet), so the title's SHA references the actual change.
+    const shaResult = await $`git rev-parse --short HEAD`.cwd(cwd).quiet().nothrow();
+    const commitSha = shaResult.exitCode === 0 ? shaResult.text().trim() || undefined : undefined;
+
+    const changelogPath = runLog.prependChangelogIn(cwd, commitSha);
     if (changelogPath && sandboxHandle) {
       await $`git add ${changelogPath}`.cwd(cwd).quiet();
       await $`git commit -m ${`docs(changelog): ${parsed.commitMessage}`}`.cwd(cwd).quiet();

@@ -143,6 +143,25 @@ describe("RunLog", () => {
       const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
       expect(log.prependChangelogIn(tmpRepo)).toBeUndefined();
     });
+
+    test("appends the short commit SHA in parentheses to the H2 title when provided", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.setAgentSummary("feat: do a thing", "Did a thing.");
+      const changelogPath = log.prependChangelogIn(tmpRepo, "abc1234");
+      expect(changelogPath).toBeDefined();
+      const text = readFileSync(changelogPath as string, "utf-8");
+      expect(text).toContain("## feat: do a thing (abc1234)");
+    });
+
+    test("omits the SHA suffix when commitSha is not provided", () => {
+      const log = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      log.setAgentSummary("feat: do a thing", "Did a thing.");
+      const changelogPath = log.prependChangelogIn(tmpRepo);
+      expect(changelogPath).toBeDefined();
+      const text = readFileSync(changelogPath as string, "utf-8");
+      expect(text).toContain("## feat: do a thing\n");
+      expect(text).not.toMatch(/## feat: do a thing \(/);
+    });
   });
 
   describe("getAgentSummaryMarkdown / getAgentSummaryCommitMessage", () => {

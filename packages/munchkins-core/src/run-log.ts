@@ -343,7 +343,12 @@ export class RunLog {
   // Caller controls timing — for sandboxed runs the agent-builder calls this before
   // teardown so the merge carries the changelog change atomically with the rest of
   // the worktree's commits. Concurrent runs may interleave; not handled.
-  prependChangelogIn(targetDir: string): string | undefined {
+  //
+  // `commitSha` (when provided) is appended to the H2 title as `(<sha>)` so a reader
+  // can trace the entry back to the worktree commit it summarizes. Caller resolves
+  // it (typically `git rev-parse --short HEAD` in the worktree before the
+  // docs(changelog) commit lands) so this stays sync.
+  prependChangelogIn(targetDir: string, commitSha?: string): string | undefined {
     if (!this.commitMessage || !this.markdown) return undefined;
     const endedAt = Date.now();
     const durationMs = endedAt - this.startedAt;
@@ -356,8 +361,9 @@ export class RunLog {
     const dateStr = formatChangelogDate(endedAt);
     const cost = this.getCostUsd();
     const costStr = cost === undefined ? "—" : `$${cost.toFixed(4)}`;
+    const shaSuffix = commitSha ? ` (${commitSha})` : "";
     const entry = [
-      `## ${this.commitMessage}`,
+      `## ${this.commitMessage}${shaSuffix}`,
       `**${dateStr} · ${this.agent} · ${durationSeconds}s · ${costStr}**`,
       "",
       this.markdown,
