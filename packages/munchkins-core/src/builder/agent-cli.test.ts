@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AgentCLI, ClaudeCLI, CodexCLI } from "./agent-cli.js";
+import { AgentCLI, ClaudeCLI, CodexCLI, type SpawnResult } from "./agent-cli.js";
 
 const ENV_KEYS = ["__MUNCHKINS_OPT_cli", "MUNCHKINS_CLI"] as const;
 
@@ -155,6 +155,122 @@ describe("CodexCLI resume mechanics", () => {
     expect(args[0]).toBe("codex");
     expect(args[1]).toBe("exec");
     expect(args).not.toContain("resume");
+  });
+});
+
+describe("ClaudeCLI rate-limit retry", () => {
+  type RunJsonStreamFn = (opts: unknown, args: string[], handle: unknown) => Promise<SpawnResult>;
+
+  function patchRunJsonStream(cli: ClaudeCLI, impl: RunJsonStreamFn): void {
+    // Replace the protected runJsonStream seam on the instance for the test.
+    (cli as unknown as { runJsonStream: RunJsonStreamFn }).runJsonStream = impl;
+  }
+
+  function makeOpts() {
+    return { systemPrompt: "", userPrompt: "u", cwd: "/tmp" };
+  }
+
+  test("retries once when output reports a future unix-seconds limit", async () => {
+    const cli = new ClaudeCLI();
+    const futureSec = Math.ceil(Date.now() / 1000) + 1; // ~0–1s in the future
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          exitCode: 1,
+          output: `Claude AI usage limit reached|${futureSec}`,
+          durationMs: 10,
+        };
+      }
+      return { exitCode: 0, output: "second-result", durationMs: 5 };
+    });
+
+    const start = Date.now();
+    const result = await cli.spawn(makeOpts());
+    const elapsed = Date.now() - start;
+
+    expect(calls).toBe(2);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("second-result");
+    // Sanity: actually slept until the reset (within one second of `futureSec`).
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  test("does not retry on success even if output looks like a limit message", async () => {
+    const cli = new ClaudeCLI();
+    const futureSec = Math.ceil(Date.now() / 1000) + 60;
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 0,
+        output: `Claude AI usage limit reached|${futureSec}`,
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("does not retry when reset timestamp fails to parse", async () => {
+    const cli = new ClaudeCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      // 5-digit number — does not match \d{10,} so the regex doesn't fire,
+      // making this a parse-failure / no-match case.
+      return {
+        exitCode: 1,
+        output: "Claude AI usage limit reached|notanumber",
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(1);
+  });
+
+  test("returns the second result verbatim and does not spawn a third time on consecutive limit-hits", async () => {
+    const cli = new ClaudeCLI();
+    const futureSec = Math.ceil(Date.now() / 1000) + 1;
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: `Claude AI usage limit reached|${futureSec}`,
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(2);
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain("Claude AI usage limit reached");
+  });
+
+  test("aborted abortSignal during the wait rejects without retrying", async () => {
+    const cli = new ClaudeCLI();
+    const futureSec = Math.ceil(Date.now() / 1000) + 60; // 60s — long enough to abort mid-wait
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: `Claude AI usage limit reached|${futureSec}`,
+        durationMs: 10,
+      };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    await expect(promise).rejects.toBeDefined();
+    expect(calls).toBe(1);
   });
 });
 

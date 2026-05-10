@@ -34,6 +34,8 @@ export interface SpawnResult {
   usage?: AgentUsage;
   /** Session id captured from the CLI's JSONL stream, if it emitted one. */
   sessionId?: string;
+  /** Captured stderr (also forwarded to the terminal in real time). */
+  stderr?: string;
 }
 
 export type AgentCLIName = "claude" | "codex";
@@ -129,7 +131,7 @@ export abstract class AgentCLI {
       const proc = Bun.spawn(args, {
         cwd: opts.cwd,
         stdout: "pipe",
-        stderr: "inherit",
+        stderr: "pipe",
         signal: opts.abortSignal,
       });
 
@@ -148,29 +150,47 @@ export abstract class AgentCLI {
         },
       };
 
-      for await (const chunk of proc.stdout) {
-        const text = decoder.decode(chunk);
-        chunks.push(text);
-
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          let event: E;
-          try {
-            event = JSON.parse(line) as E;
-          } catch {
-            continue;
-          }
-          handle(event, ctx);
+      // Read stderr concurrently, forwarding bytes to the user's terminal in
+      // real time while also accumulating into a buffer so the limit-hit
+      // detection in ClaudeCLI can scan it after exit.
+      const stderrChunks: string[] = [];
+      const stderrPromise = (async () => {
+        const dec = new TextDecoder();
+        for await (const chunk of proc.stderr) {
+          const text = dec.decode(chunk);
+          stderrChunks.push(text);
+          process.stderr.write(text);
         }
-      }
+      })();
+
+      const stdoutPromise = (async () => {
+        for await (const chunk of proc.stdout) {
+          const text = decoder.decode(chunk);
+          chunks.push(text);
+
+          for (const line of text.split("\n")) {
+            if (!line.trim()) continue;
+            let event: E;
+            try {
+              event = JSON.parse(line) as E;
+            } catch {
+              continue;
+            }
+            handle(event, ctx);
+          }
+        }
+      })();
 
       const exitCode = await proc.exited;
+      await stdoutPromise;
+      await stderrPromise;
       return {
         exitCode,
         output: finalResult || chunks.join(""),
         durationMs: Date.now() - startTime,
         usage,
         sessionId,
+        stderr: stderrChunks.join(""),
       };
     } catch (err) {
       return {
@@ -182,6 +202,72 @@ export abstract class AgentCLI {
       };
     }
   }
+}
+
+const LIMIT_RE_UNIX = /Claude AI usage limit reached\|(\d{10,})/;
+const LIMIT_RE_HHMM = /Claude AI usage limit reached.*?(\d{1,2}:\d{2})/;
+
+function isLimitHit(result: SpawnResult): boolean {
+  if (result.exitCode === 0) return false;
+  const stderr = result.stderr ?? "";
+  return (
+    LIMIT_RE_UNIX.test(stderr) ||
+    LIMIT_RE_UNIX.test(result.output) ||
+    LIMIT_RE_HHMM.test(stderr) ||
+    LIMIT_RE_HHMM.test(result.output)
+  );
+}
+
+function parseResetTimestamp(result: SpawnResult, now: Date = new Date()): Date | null {
+  const sources = [result.stderr ?? "", result.output];
+  for (const text of sources) {
+    const unix = text.match(LIMIT_RE_UNIX);
+    if (unix) {
+      const seconds = Number(unix[1]);
+      if (!Number.isFinite(seconds) || seconds <= 0) return null;
+      return new Date(seconds * 1000);
+    }
+  }
+  for (const text of sources) {
+    const hhmm = text.match(LIMIT_RE_HHMM);
+    if (hhmm) {
+      const [hStr, mStr] = hhmm[1].split(":");
+      const h = Number(hStr);
+      const m = Number(mStr);
+      if (!Number.isFinite(h) || !Number.isFinite(m) || h > 23 || m > 59) return null;
+      const candidate = new Date(now);
+      candidate.setHours(h, m, 0, 0);
+      if (candidate.getTime() <= now.getTime()) {
+        candidate.setDate(candidate.getDate() + 1);
+      }
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function sleepUntil(target: Date, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason ?? new Error("aborted"));
+  }
+  const ms = target.getTime() - Date.now();
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      reject(signal?.reason ?? new Error("aborted"));
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function formatLocalTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour12: false });
 }
 
 export class ClaudeCLI extends AgentCLI {
@@ -208,7 +294,8 @@ export class ClaudeCLI extends AgentCLI {
   }
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    return this.runJsonStream<ClaudeStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
+    const args = this.buildArgs(opts);
+    const handler = (event: ClaudeStreamEvent, ctx: StreamContext) => {
       if (event.type === "system" && event.subtype === "init" && event.session_id) {
         ctx.setSessionId(event.session_id);
       }
@@ -238,7 +325,15 @@ export class ClaudeCLI extends AgentCLI {
       } else if (event.type === "result" && event.result) {
         process.stdout.write(`\n${event.result}\n`);
       }
-    });
+    };
+
+    const result = await this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
+    if (!isLimitHit(result)) return result;
+    const resetAt = parseResetTimestamp(result);
+    if (!resetAt) return result;
+    process.stderr.write(`⏳ Claude limit hit, waiting until ${formatLocalTime(resetAt)}\n`);
+    await sleepUntil(resetAt, opts.abortSignal);
+    return this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
   }
 }
 
