@@ -2,7 +2,17 @@
 
 Write a registered agent that auto-appears in `bun run munchkins --help` alongside the defaults. The default bundle is just three small files using the public framework — there is no hidden surface.
 
+## Scaffold with the `new-munchkin` skill
+
+If you're inside Claude Code, the `new-munchkin` skill is the path. It scaffolds a new agent — or revises an existing one — by walking you through a short sequential interview: purpose, distinctness from agents already in the repo, archetype (single-step vs. main+refactor vs. main+refactor+tests), kebab-case slug, and the prompt body. It introspects your repo first, so generated files use *your* shared presets, *your* CI gate commands, and the language and package manager you already use. Nothing is hardcoded against the munchkins monorepo.
+
+Trigger it from Claude Code with `/new-munchkin`, or with phrases like *"new munchkin"*, *"add a default agent"*, *"scaffold a munchkin agent"*, or *"design an agent for this repo"*. To revise an existing agent, name it: *"edit the X munchkin"*, *"tweak X's prompt"*, *"demote X to a single-step agent"*.
+
+Create-mode produces the agent's `<name>-agent.ts` (fully wired against `AgentBuilder` and the discovered shared presets), its `prompts/<name>.md`, the side-effect import line in your bundle's entry, and an `AGENTS.md` row. After it's done, the agent shows up in `bun run munchkins --help` and runs identically to the defaults. See `packages/munchkins/skills/new-munchkin/SKILL.md` in this repo for the full workflow, including pre-flight, mode pick (create vs. edit), and verification.
+
 ## What you're building
+
+The rest of this page is the manual path. Use it to understand what the skill is doing, or when you want to do something the skill doesn't cover.
 
 A custom agent is a TypeScript file that constructs an `AgentBuilder`, attaches steps and a deterministic gate, and calls `registry.register(builder)`. A side-effect import from your bundle's entry pulls it into the CLI. After that:
 
@@ -11,12 +21,6 @@ bun run munchkins your-agent --user-message=./scratch/brief.md
 ```
 
 …just works. `--help` lists it; `--dry-run` describes it; `resume`, `daemon`, and the `launch-munchkin` skill all treat it like a default.
-
-## The easy path: the `new-munchkin` skill
-
-If you're inside Claude Code, the `new-munchkin` skill scaffolds the agent for you. Trigger it with phrases like *"new munchkin"*, *"add a default agent"*, or *"scaffold a munchkin agent"*. The skill walks you through a sequential interview — purpose, distinctness from existing agents, archetype (single-step vs. main+refactor vs. main+refactor+tests), name, prompt content — then writes the files. See `packages/munchkins/skills/new-munchkin/SKILL.md` in this repo for the full workflow.
-
-The rest of this page is the manual path. Use it to understand what the skill is doing or when you want to do something the skill doesn't cover.
 
 ## File layout
 

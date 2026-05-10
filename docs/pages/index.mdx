@@ -9,11 +9,14 @@ description: Autonomous coding agents that ship — not chatbots that suggest.
 
 Drop a description of the work in. Get a merged commit out. Every run is sandboxed in a fresh git worktree, gated by `lint` + `typecheck` + `scenario`, and only fast-forwarded into your branch when the gate goes green. Plug in `claude` or `codex` as the backend; swap freely per run.
 
-This site is a working guide to the framework. Each agent has its own page covering everything you can do with it; pick the one that matches your task and the page is self-contained.
+The default agents are working examples. Your goal is building agents for your codebase — the `new-munchkin` skill gets you there in one session.
 
 - **Three default agents out of the box** — `bug-fix`, `feat-small`, `refactor`. Each one is a full pipeline, not a single Claude call.
 - **Build your own.** `AgentBuilder` lets you compose steps, deterministic gates, summary writers, sandboxes, and integration strategies. New agents auto-appear in `--help`.
 - **Resume, schedule, delegate.** Interrupted runs resume from disk. Cron specs run agents on their own. The `launch-munchkin` Claude Code skill hands work off in one sentence.
 
-→ [**Get started**](/getting-started) — install, prereqs, your first run.
-→ [**Bug fix**](/agents/bug-fix) · [**Small feature**](/agents/feat-small) · [**Refactor**](/agents/refactor) · [**Build your own**](/agents/custom)
+→ [**Get started**](/getting-started) — install, smoke test, scaffold your first agent.
+
+→ Defaults (reference): [**Bug fix**](/agents/bug-fix) · [**Small feature**](/agents/feat-small) · [**Refactor**](/agents/refactor)
+
+→ Build your own: [**`/new-munchkin` skill · `AgentBuilder` API**](/agents/custom)

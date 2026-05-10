@@ -1,6 +1,6 @@
 # Getting started
 
-Install munchkins, run your first agent, and learn where the artifacts land. By the end of this page you'll have a real pipeline running against a real Claude (or Codex) backend.
+Install munchkins, run a smoke-test agent to prove the pipeline works against a real backend, then scaffold your first custom agent for this repo.
 
 ## Prerequisites
 
@@ -9,6 +9,8 @@ Install munchkins, run your first agent, and learn where the artifacts land. By 
 3. **A backend CLI on `PATH`, authenticated.**
    - **`claude`** is the default. Sign in once with `claude` and accept the auth flow.
    - **`codex`** is the alternate backend. Run `codex login` once if you intend to use `--cli=codex`.
+4. **Lint / typecheck / scenario / test scripts** in the host repo's `package.json` (see Install). The deterministic gate calls them by name; any of them can be a no-op, but they must exist.
+5. **Claude Code (optional but recommended).** The fastest path to your first custom agent is the `/new-munchkin` skill, which only runs inside Claude Code. If you don't use Claude Code, you can still build agents by hand — see [`agents/custom.md`](/agents/custom). Required only for the skill, not for running agents.
 
 The host repo doesn't have to be the munchkins monorepo — any git repo with the package manager and gate scripts described below will do.
 
@@ -25,10 +27,12 @@ Then add a `munchkins` script to your `package.json` so you can invoke it withou
 ```json
 {
   "scripts": {
-    "munchkins": "bun run node_modules/@serranolabs.io/munchkins/src/index.ts"
+    "munchkins": "munchkins"
   }
 }
 ```
+
+`bun add` puts the `munchkins` binary in `node_modules/.bin`, so `bun run munchkins …` resolves directly. `bunx @serranolabs.io/munchkins …` works as an alternative invocation form.
 
 The deterministic gate the default agents run after each step calls these five commands inside the worktree. Any of them can be a no-op, but they must exist:
 
@@ -46,7 +50,17 @@ The deterministic gate the default agents run after each step calls these five c
 
 Use whichever lint/typecheck/test runners your project already prefers. The agent invokes them as plain shell, not Bun-specific tasks.
 
-## Your first run
+Finally, install the bundled Claude Code skills so the `/new-munchkin` and `/launch-munchkin` triggers are discoverable from inside Claude Code:
+
+```sh
+bun run munchkins skills install
+```
+
+This copies every skill shipped with `@serranolabs.io/munchkins` into `.claude/skills/` in the current working directory. Override the destination with `--dest <path>` (or `-d <path>`).
+
+## Proof of life: run the bug-fix agent
+
+This is a smoke test. It validates that install worked, the gate scripts are wired correctly, and the backend CLI is authenticated — before you invest in a 15-minute skill interview to build a custom agent.
 
 Create a short markdown spec at `scratch/first-bug.md`:
 
@@ -80,49 +94,29 @@ What you should see, roughly in order:
 5. **Integration.** Default is `merge`: rebase the worktree onto your branch, then fast-forward your branch to the rebased tip. Worktree and branch are removed on success.
 6. **PASS line.** Total duration, token in/out, dollar cost (or `—` for Codex), the commit message, and the run's log directory.
 
-## Where the artifacts go
+Run artifacts land under `.munchkins/runs/<slug>-<short-id>/` — see [`agents/custom.md`](/agents/custom) for the full layout. If a run fails, the worktree and branch are preserved at the printed path; clean up with `git worktree remove <path>`, which deletes both.
 
-Every run writes to `.munchkins/runs/<slug>-<short-id>/` under your repo root. Override the location with the `MUNCHKINS_RUN_LOG_DIR` env var (relative paths resolve against the repo root).
+## Scaffold your first agent for this repo
 
-```
-.munchkins/runs/first-bug-1a2b3c4d/
-├── state.json                       # full RunState — used by `munchkins resume`
-├── summary.json                     # totals: duration, tokens, cost, commit message
-├── events.jsonl                     # one event per agent / deterministic / fixer call
-├── step-01-agent.system.md          # exact system prompt sent to Claude
-├── step-01-agent.user.md            # exact user prompt sent to Claude
-├── step-01-agent.response.txt       # Claude's response
-├── step-02-agent.system.md
-├── step-02-agent.user.md
-├── step-02-agent.response.txt
-├── step-03-det-iter-01.log          # deterministic gate output, iteration 1
-└── step-04-summary.system.md        # summary writer prompts + response
-```
+The default agents are demos. They don't know your repo's conventions, your file layout, or what "done" looks like for the kind of work you actually do here. The value kicks in when you build agents that match — same gate, same shared presets, same terse voice.
 
-The summary writer also prepends a markdown entry to your `CHANGELOG.md` (override the path with `MUNCHKINS_CHANGELOG_PATH`). The default location is `CHANGELOG.md` in your repo root; the entry includes the run's commit SHA, agent name, duration, and cost.
-
-## If it fails
-
-When the gate exhausts its retries or any step blows up, munchkins **preserves the worktree and branch** so you can inspect them. The PASS line becomes a FAIL line and prints the worktree path:
+Open Claude Code in this repo's root and trigger the skill:
 
 ```
-worktree preserved at /repo/.worktrees/bug-fix-1700000000-12ab34cd (branch: agent/first-bug-1a2b3c4d)
-reason: deterministic step failed after 3 iteration(s): …
+/new-munchkin
 ```
 
-Inspect the worktree with `cd <path>`, `git log`, `git diff`. When you're done:
+The trigger phrases *"new munchkin"*, *"scaffold a munchkin agent"*, and *"design an agent for this repo"* all reach the same skill. It introspects your repo first (agents directory, existing agents, CI gate commands, lint/typecheck configs, package manager) so nothing it generates is hardcoded — then walks you through a short sequential interview: purpose, distinctness from existing agents, archetype, kebab-case name, and the prompt body.
 
-```sh
-git worktree remove /repo/.worktrees/bug-fix-1700000000-12ab34cd
-```
+Create-mode produces:
 
-That removes both the directory and the agent's branch.
+- `<your-agent>-agent.ts` — fully wired against `AgentBuilder`, your discovered shared presets, the deterministic gate, and the summary writer.
+- `prompts/<your-agent>.md` — the system prompt, drafted in the same terse voice as your existing agent prompts.
+- A side-effect import in your bundle's entry (`packages/<your-bundle>/src/index.ts`) plus an `AGENTS.md` row.
+
+The new agent appears in `bun run munchkins --help` and runs identically to `bug-fix`, `feat-small`, or `refactor`.
 
 ## Next steps
 
-Pick the page that matches your next task — each one covers every flag, env var, and integration the agent supports:
-
-- [**Bug fix**](/agents/bug-fix) — root-cause analysis, minimal patch, refactor pass on touched files.
-- [**Small feature**](/agents/feat-small) — scoped new functionality with a test-writer pass.
-- [**Refactor**](/agents/refactor) — behavior-preserving cleanup.
-- [**Build your own**](/agents/custom) — full `AgentBuilder` surface and the `new-munchkin` skill.
+- **Run the agents** — flag, env var, and integration details for each default: [Bug fix](/agents/bug-fix), [Small feature](/agents/feat-small), [Refactor](/agents/refactor).
+- **Go deeper** — full `AgentBuilder` API and the manual path to building your own: [Build your own](/agents/custom).
