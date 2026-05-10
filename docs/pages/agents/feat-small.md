@@ -74,7 +74,7 @@ The `feat-small` agent has a built-in test-writer step (see Pipeline below). You
 
 ## Pipeline
 
-`feat-small` registers five steps plus a summary writer. Every step has the shared `agents/_shared/prompts/agent-guidelines.md` prepended to its system prompt.
+`feat-small` registers four steps plus a summary writer. Every step has the shared `agents/_shared/prompts/agent-guidelines.md` prepended to its system prompt.
 
 | # | Kind | System prompt | What it does |
 |---|------|---------------|--------------|

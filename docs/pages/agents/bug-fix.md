@@ -69,7 +69,7 @@ Avoid prescribing the implementation. The first agent step does its own root-cau
 
 ## Pipeline
 
-`bug-fix` registers four steps plus a summary writer. Every step has the shared `agents/_shared/prompts/agent-guidelines.md` prepended to its system prompt.
+`bug-fix` registers three steps plus a summary writer. Every step has the shared `agents/_shared/prompts/agent-guidelines.md` prepended to its system prompt.
 
 | # | Kind | System prompt | What it does |
 |---|------|---------------|--------------|
