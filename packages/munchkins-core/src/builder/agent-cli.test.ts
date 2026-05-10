@@ -272,6 +272,70 @@ describe("ClaudeCLI rate-limit retry", () => {
     await expect(promise).rejects.toBeDefined();
     expect(calls).toBe(1);
   });
+
+  test("retries when limit message appears only in stderr (not output)", async () => {
+    const cli = new ClaudeCLI();
+    const futureSec = Math.ceil(Date.now() / 1000) + 1;
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          exitCode: 1,
+          output: "",
+          stderr: `Claude AI usage limit reached|${futureSec}\n`,
+          durationMs: 10,
+        };
+      }
+      return { exitCode: 0, output: "ok", durationMs: 5 };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(2);
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("ok");
+  });
+
+  test("triggers a retry-wait on HHMM-format reset time (proven via mid-wait abort)", async () => {
+    const cli = new ClaudeCLI();
+    // ~5 minutes ahead, well outside Bun's default test timeout. Abort short-circuits
+    // the wait — reaching the wait at all proves HHMM was parsed and treated as a hit.
+    const target = new Date(Date.now() + 5 * 60_000);
+    const hhmm = `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`;
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: `Claude AI usage limit reached at ${hhmm}`,
+        durationMs: 10,
+      };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    await expect(promise).rejects.toBeDefined();
+    // Exactly one spawn — the abort fired during the post-spawn sleep, before retry.
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry when HHMM is out of range (e.g. 25:99)", async () => {
+    const cli = new ClaudeCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: "Claude AI usage limit reached at 25:99",
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(1);
+  });
 });
 
 describe("CodexCLI.buildArgs", () => {
