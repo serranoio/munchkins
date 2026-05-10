@@ -65,6 +65,7 @@ export {
   type RunDaemonOptions,
   runDaemon,
 } from "./scheduler/index.js";
+export { type RunStatusDeps, type RunStatusResult, runStatus } from "./status/index.js";
 export {
   cleanupWorktree,
   createWorktree,
