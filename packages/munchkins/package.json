@@ -9,7 +9,8 @@
   },
   "files": [
     "src",
-    "agents"
+    "agents",
+    "skills"
   ],
   "exports": {
     ".": "./src/index.ts",
