@@ -4,6 +4,52 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(munchkins-core): add resume subcommand for interrupted runs
+**2026-05-09 20:11 PDT · feat-small · 1532.9s · $15.7377**
+
+**Goal:** Add `bun run munchkins resume [runId]` so an interrupted run (rate limit, Ctrl-C, OOM) can pick up from the last completed step, including resuming the underlying Claude/Codex session.
+
+**Outcome:** Each run now writes an incremental `state.json` to its `.munchkins/runs/<slug>-<uuid>/` directory tracking phase, per-step status, and captured CLI session ids. `SandboxFactory` was reshaped into an object with `create()` + `rehydrate()`; `gitWorktreeSandbox` implements `rehydrate()` against an existing worktree with hard-fail preconditions for missing worktree/branch and a logged warning for dirty/advanced state. `AgentBuilder` exposes `runFromState()` (called by both fresh runs and the new resume orchestrator); `ClaudeCLI`/`CodexCLI` capture `session_id` from their JSONL streams and emit `--resume <id>` (Claude) or `codex resume <id> exec` (Codex) with a continue message when given a `resumeSessionId`. A new `runResume(argv)` orchestrator wired into `packages/munchkins/src/index.ts` handles `--list`, `--latest`, full runId, and unique-slug resolution; `RunLog.resume(dir)` replays `events.jsonl` so token/cost totals survive across the resume boundary.
+
+**How to test manually:**
+
+1. From the repo root, build/install once: `bun install`.
+2. Confirm the new subcommand surfaces with no resumable runs: `bun run munchkins resume --list` — should print `no resumable runs` and exit 0. Same with no args: `bun run munchkins resume`.
+3. Kick off a real bug-fix run against a throwaway change so it produces a `state.json`: `bun run munchkins bug-fix --user-message="add a no-op comment to packages/munchkins-core/src/index.ts"`. Once you see the first agent step actually start (the banner prints `[step 1/N agent]`), interrupt with Ctrl-C.
+4. Inspect the preserved run dir: `ls .munchkins/runs/` then `cat .munchkins/runs/<slug>-<uuid>/state.json` — verify `phase` is still `"steps"` (not `"done"` / `"failed"`), step 0 has `status: "in-progress"`, and (if Claude got far enough to emit its init event) `sessionId` is populated.
+5. List resumables: `bun run munchkins resume --list` — should print a table row for that run with `runId`, `agent`, `slug`, `started-at`, `phase`, and `completed/total` step counts.
+6. Resume by full id: `bun run munchkins resume <slug>-<uuid>`. Confirm in output that the worktree path is reused (no new `agent/...` branch is created), and that step 0 is re-attempted via `claude --resume <id>` (look for the continue message in verbose output by re-running with `--verbose`). When it finishes, `state.json.phase` should be `"done"`.
+7. Slug resolution edge case — happy path: with one resumable, run `bun run munchkins resume <slug>` (no uuid). Should resolve and run.
+8. Slug resolution edge case — ambiguous: leave two interrupted runs with the same slug, run `bun run munchkins resume <slug>` — should exit 1 and print both full runIds in the error.
+9. `--latest`: with multiple resumables, run `bun run munchkins resume --latest` and confirm it picks the most recent by `startedAt`.
+10. Rehydrate hard-fail: from another resumable run dir, `rm -rf` the worktree it points at, then `bun run munchkins resume <runId>` — should exit 1 with `Worktree at <path> no longer exists`. Likewise delete its branch (`git branch -D agent/...`) for the deleted-branch failure.
+11. Session-not-found fallback: edit a `state.json`'s `steps[0].sessionId` to `"definitely-bogus-id"`, then resume — Claude returns a session-not-found error and the builder should log `[resume] session ... no longer available; restarting step with worktree-state hint.` and re-spawn fresh with a `git status` / `git diff --stat HEAD` preamble baked into the system prompt.
+12. Token accounting: after a resumed run completes, open `.munchkins/runs/<slug>-<uuid>/summary.json` and confirm tokens-in/out and cost reflect both the original run's events AND the resumed CLI calls (i.e. greater than what a fresh run alone would have produced).
+13. Regression check on the unchanged path: run a fresh `bun run munchkins bug-fix --user-message="..."` to completion and confirm it still works end-to-end with no prompts about resume, no extra args, and produces the same shape of summary as before.
+14. Automated tests cover the unit-level behavior — `bun run test packages/munchkins-core/src/resume` and `bun run test packages/munchkins-core/src/sandbox/sandbox.test.ts` — but step 11 above (real session-not-found against the live `claude` CLI) is the one out-of-band check the tests don't perform.
+
+**Files changed:**
+
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/agent-builder.test.ts
+- packages/munchkins-core/src/builder/agent-cli.ts
+- packages/munchkins-core/src/builder/agent-cli.test.ts
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/resume/index.ts
+- packages/munchkins-core/src/resume/run-resume.ts
+- packages/munchkins-core/src/resume/run-resume.test.ts
+- packages/munchkins-core/src/resume/run-state.ts
+- packages/munchkins-core/src/resume/run-state.test.ts
+- packages/munchkins-core/src/resume/test-fixtures.ts
+- packages/munchkins-core/src/run-log.ts
+- packages/munchkins-core/src/run-log.test.ts
+- packages/munchkins-core/src/sandbox/index.ts
+- packages/munchkins-core/src/sandbox/sandbox.ts
+- packages/munchkins-core/src/sandbox/sandbox.test.ts
+- packages/munchkins/src/index.ts
+
+---
+
 ## fix(feat-small): swap new-surface section for manual-test recipe
 **2026-05-09 19:49 PDT · bug-fix · 261.2s · $1.6490**
 
