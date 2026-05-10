@@ -15,6 +15,7 @@ export const SUMMARY_WRITER_PATH = join(SHARED_PROMPTS, "summary-writer.md");
 export const TEST_WRITER_PATH = join(SHARED_PROMPTS, "test-writer.md");
 
 export const DEFAULT_CHECKS: readonly string[] = [
+  "bun run lint:fix",
   "bun run lint",
   "bun run typecheck",
   "bun run scenario",
