@@ -68,8 +68,11 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org/"
-      - name: Upgrade npm to >=11.5.1 (required for Trusted Publishing)
-        run: npm install -g npm@latest
+      - name: Install npm 11.5.1+ to a local prefix (required for Trusted Publishing)
+        run: |
+          mkdir -p /tmp/npm-latest
+          npm install --prefix /tmp/npm-latest --no-save --no-audit --no-fund --no-package-lock npm@latest
+          echo "/tmp/npm-latest/node_modules/.bin" >> "$GITHUB_PATH"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.13
