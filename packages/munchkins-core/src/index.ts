@@ -35,11 +35,26 @@ export {
   rebaseAndResolve,
 } from "./integrate.js";
 export { AgentRegistry, registry } from "./registry/index.js";
+export {
+  listResumableRuns,
+  loadState,
+  type ResumableRun,
+  type RunPhase,
+  type RunResumeDeps,
+  type RunResumeResult,
+  type RunState,
+  type RunStateStep,
+  runResume,
+  type StepKind,
+  type StepStatus,
+  saveState,
+} from "./resume/index.js";
 export { RunLog, type RunSummary } from "./run-log.js";
 export {
   gitWorktreeSandbox,
   type SandboxFactory,
   type SandboxHandle,
+  type SandboxState,
   type TeardownContext,
   type TeardownResult,
 } from "./sandbox/index.js";

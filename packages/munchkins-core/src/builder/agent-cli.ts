@@ -6,6 +6,17 @@ export interface SpawnOptions {
   model?: string;
   disallowedTools?: string[];
   abortSignal?: AbortSignal;
+  /**
+   * If set, the CLI is invoked in resume mode against this session id and
+   * `userPrompt` is replaced with a "continue" message. The original
+   * conversation context is restored by the underlying CLI.
+   */
+  resumeSessionId?: string;
+  /**
+   * Notified the moment the CLI's init event yields a session id. Lets the
+   * caller persist the id mid-step (so an interrupted run can be resumed).
+   */
+  onSessionId?: (sessionId: string) => void;
 }
 
 export interface AgentUsage {
@@ -21,12 +32,19 @@ export interface SpawnResult {
   output: string;
   durationMs: number;
   usage?: AgentUsage;
+  /** Session id captured from the CLI's JSONL stream, if it emitted one. */
+  sessionId?: string;
 }
 
 export type AgentCLIName = "claude" | "codex";
 
+const RESUME_CONTINUE_MESSAGE =
+  "Continue from where you left off. The previous run was interrupted mid-task; pick up from your last action.";
+
 interface ClaudeStreamEvent {
   type?: string;
+  subtype?: string;
+  session_id?: string;
   result?: string;
   total_cost_usd?: number;
   usage?: {
@@ -47,6 +65,7 @@ interface CodexStreamEventMsg {
   delta?: string;
   name?: string;
   last_agent_message?: string;
+  session_id?: string;
   info?: {
     total_token_usage?: {
       input_tokens?: number;
@@ -63,12 +82,14 @@ interface CodexStreamEventMsg {
 
 interface CodexStreamEvent {
   id?: string;
+  session_id?: string;
   msg?: CodexStreamEventMsg;
 }
 
 interface StreamContext {
   setFinalResult: (s: string) => void;
   setUsage: (u: AgentUsage) => void;
+  setSessionId: (s: string) => void;
 }
 
 export abstract class AgentCLI {
@@ -101,6 +122,7 @@ export abstract class AgentCLI {
     const startTime = Date.now();
     let usage: AgentUsage | undefined;
     let finalResult = "";
+    let sessionId: string | undefined;
     const chunks: string[] = [];
 
     try {
@@ -118,6 +140,11 @@ export abstract class AgentCLI {
         },
         setUsage: (u) => {
           usage = u;
+        },
+        setSessionId: (s) => {
+          if (sessionId === s) return;
+          sessionId = s;
+          opts.onSessionId?.(s);
         },
       };
 
@@ -143,6 +170,7 @@ export abstract class AgentCLI {
         output: finalResult || chunks.join(""),
         durationMs: Date.now() - startTime,
         usage,
+        sessionId,
       };
     } catch (err) {
       return {
@@ -150,6 +178,7 @@ export abstract class AgentCLI {
         output: `Error spawning ${this.name}: ${err}`,
         durationMs: Date.now() - startTime,
         usage,
+        sessionId,
       };
     }
   }
@@ -159,7 +188,12 @@ export class ClaudeCLI extends AgentCLI {
   readonly name = "claude" as const;
 
   buildArgs(opts: SpawnOptions): string[] {
-    const args = ["claude", "--dangerously-skip-permissions", "-p", opts.userPrompt];
+    const userPrompt = opts.resumeSessionId ? RESUME_CONTINUE_MESSAGE : opts.userPrompt;
+    const args = ["claude", "--dangerously-skip-permissions"];
+    if (opts.resumeSessionId) {
+      args.push("--resume", opts.resumeSessionId);
+    }
+    args.push("-p", userPrompt);
     if (opts.systemPrompt) {
       args.push("--system-prompt", opts.systemPrompt);
     }
@@ -175,6 +209,9 @@ export class ClaudeCLI extends AgentCLI {
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
     return this.runJsonStream<ClaudeStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
+      if (event.type === "system" && event.subtype === "init" && event.session_id) {
+        ctx.setSessionId(event.session_id);
+      }
       if (event.type === "result") {
         if (event.result) ctx.setFinalResult(event.result);
         if (event.usage || event.total_cost_usd !== undefined) {
@@ -212,17 +249,18 @@ export class CodexCLI extends AgentCLI {
     // Codex `exec` has no --system-prompt flag. Prepending the system prompt to the
     // user prompt under labeled sections is the lowest-coupling delivery: no config
     // override, no AGENTS.md collision (this repo's AGENTS.md is load-bearing).
+    const promptText = opts.resumeSessionId ? RESUME_CONTINUE_MESSAGE : opts.userPrompt;
     const fullPrompt = opts.systemPrompt
-      ? `## System\n${opts.systemPrompt}\n\n## Task\n${opts.userPrompt}`
-      : opts.userPrompt;
-    const args = [
-      "codex",
-      "exec",
-      "--json",
-      "--dangerously-bypass-approvals-and-sandbox",
-      "-C",
-      opts.cwd,
-    ];
+      ? `## System\n${opts.systemPrompt}\n\n## Task\n${promptText}`
+      : promptText;
+    // `codex resume <session-id> exec ...` is the resume form; `codex exec ...` is the
+    // fresh form. The exact resume flag shape is verified at runtime — if Codex
+    // changes it, the fallback path in agent-builder restarts the step from scratch.
+    const args: string[] = ["codex"];
+    if (opts.resumeSessionId) {
+      args.push("resume", opts.resumeSessionId);
+    }
+    args.push("exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "-C", opts.cwd);
     if (opts.model) {
       args.push("--model", opts.model);
     }
@@ -233,6 +271,10 @@ export class CodexCLI extends AgentCLI {
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
     return this.runJsonStream<CodexStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
       const msg = event.msg;
+      // session_id may appear at the top level or inside msg, depending on
+      // Codex CLI version. Capture either form.
+      const sid = event.session_id ?? msg?.session_id;
+      if (sid) ctx.setSessionId(sid);
       if (!msg) return;
 
       if (msg.type === "agent_message" && typeof msg.message === "string") {

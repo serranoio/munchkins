@@ -101,6 +101,63 @@ describe("ClaudeCLI.buildArgs", () => {
   });
 });
 
+describe("ClaudeCLI resume mechanics", () => {
+  test("includes --resume <id> and replaces the user prompt with the continue message", () => {
+    const args = new ClaudeCLI().buildArgs({
+      systemPrompt: "SYS",
+      userPrompt: "ORIGINAL USER",
+      cwd: "/tmp",
+      resumeSessionId: "abc-123",
+    });
+    expect(args).toContain("--resume");
+    expect(args).toContain("abc-123");
+    const pIdx = args.indexOf("-p");
+    expect(args[pIdx + 1]).toMatch(/Continue from where you left off/);
+    // The original user prompt is suppressed in resume mode.
+    expect(args).not.toContain("ORIGINAL USER");
+  });
+
+  test("does NOT pass --resume when resumeSessionId is absent (regression lock)", () => {
+    const args = new ClaudeCLI().buildArgs({
+      systemPrompt: "SYS",
+      userPrompt: "ORIGINAL USER",
+      cwd: "/tmp",
+    });
+    expect(args).not.toContain("--resume");
+    const pIdx = args.indexOf("-p");
+    expect(args[pIdx + 1]).toBe("ORIGINAL USER");
+  });
+});
+
+describe("CodexCLI resume mechanics", () => {
+  test("prepends 'resume <id>' before exec and uses the continue message", () => {
+    const args = new CodexCLI().buildArgs({
+      systemPrompt: "SYS",
+      userPrompt: "ORIGINAL USER",
+      cwd: "/tmp",
+      resumeSessionId: "xyz-789",
+    });
+    expect(args[0]).toBe("codex");
+    expect(args[1]).toBe("resume");
+    expect(args[2]).toBe("xyz-789");
+    expect(args[3]).toBe("exec");
+    // The composed prompt embeds the continue message, not the original.
+    expect(args[args.length - 1]).toMatch(/Continue from where you left off/);
+    expect(args[args.length - 1]).not.toMatch(/ORIGINAL USER/);
+  });
+
+  test("does NOT prepend 'resume' when resumeSessionId is absent (regression lock)", () => {
+    const args = new CodexCLI().buildArgs({
+      systemPrompt: "SYS",
+      userPrompt: "ORIGINAL USER",
+      cwd: "/tmp",
+    });
+    expect(args[0]).toBe("codex");
+    expect(args[1]).toBe("exec");
+    expect(args).not.toContain("resume");
+  });
+});
+
 describe("CodexCLI.buildArgs", () => {
   test("prepends system prompt under labeled sections and includes the bypass flag", () => {
     const args = new CodexCLI().buildArgs({

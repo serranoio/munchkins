@@ -84,20 +84,61 @@ export class RunLog {
   private commitMessage: string | undefined;
   private markdown: string | undefined;
 
-  constructor(repoRoot: string, agentName: string, opts?: { slug?: string }) {
+  constructor(repoRoot: string, agentName: string, opts?: { slug?: string; existingDir?: string }) {
     this.agent = agentName;
     this.startedAt = Date.now();
-    const uuid = crypto.randomUUID().slice(0, 8);
-    const slug = opts?.slug?.trim();
-    const dirName = slug ? `${slug}-${uuid}` : `${agentName}-${this.startedAt}-${uuid}`;
-    const baseDir = resolveEnvPath(
-      process.env.MUNCHKINS_RUN_LOG_DIR,
-      join(repoRoot, ".munchkins", "runs"),
-      repoRoot,
-    );
-    this.dir = join(baseDir, dirName);
+    if (opts?.existingDir) {
+      this.dir = opts.existingDir;
+    } else {
+      const uuid = crypto.randomUUID().slice(0, 8);
+      const slug = opts?.slug?.trim();
+      const dirName = slug ? `${slug}-${uuid}` : `${agentName}-${this.startedAt}-${uuid}`;
+      const baseDir = resolveEnvPath(
+        process.env.MUNCHKINS_RUN_LOG_DIR,
+        join(repoRoot, ".munchkins", "runs"),
+        repoRoot,
+      );
+      this.dir = join(baseDir, dirName);
+    }
     mkdirSync(this.dir, { recursive: true });
     this.eventsPath = join(this.dir, "events.jsonl");
+  }
+
+  /**
+   * Reattach to an existing run-log directory and replay `events.jsonl` to
+   * seed token / cost counters. Used by the resume orchestrator so totals
+   * accumulated by the original run survive into the resumed run.
+   */
+  static resume(dir: string, agentName: string): RunLog {
+    const log = new RunLog("", agentName, { existingDir: dir });
+    if (!existsSync(log.eventsPath)) return log;
+    const text = readFileSync(log.eventsPath, "utf-8");
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const tokensIn = event.tokensIn;
+      const tokensOut = event.tokensOut;
+      const cacheCreate = event.cacheCreationInputTokens;
+      const cacheRead = event.cacheReadInputTokens;
+      const cost = event.costUsd;
+      if (typeof tokensIn === "number") log.tokensIn += tokensIn;
+      if (typeof tokensOut === "number") log.tokensOut += tokensOut;
+      if (typeof cacheCreate === "number") log.cacheCreationInputTokens += cacheCreate;
+      if (typeof cacheRead === "number") log.cacheReadInputTokens += cacheRead;
+      // Only replayed events that explicitly persisted token totals contribute.
+      // If a usage-bearing event omitted costUsd, mark unknown contributions.
+      const hasTokenSignal = typeof tokensIn === "number" || typeof tokensOut === "number";
+      if (hasTokenSignal) {
+        if (typeof cost === "number") log.costUsd += cost;
+        else log.costUsdHasUnknownContributions = true;
+      }
+    }
+    return log;
   }
 
   private writeEvent(event: Record<string, unknown>): void {
@@ -119,6 +160,15 @@ export class RunLog {
     } else {
       this.costUsd += usage.costUsd;
     }
+    // Persist into events.jsonl so RunLog.resume() can replay totals.
+    this.writeEvent({
+      type: "usage",
+      tokensIn: usage.inputTokens,
+      tokensOut: usage.outputTokens,
+      cacheCreationInputTokens: usage.cacheCreationInputTokens,
+      cacheReadInputTokens: usage.cacheReadInputTokens,
+      ...(usage.costUsd !== undefined ? { costUsd: usage.costUsd } : {}),
+    });
   }
 
   getCostUsd(): number | undefined {

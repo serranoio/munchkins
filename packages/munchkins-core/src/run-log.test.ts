@@ -159,4 +159,43 @@ describe("RunLog", () => {
       expect(log.getAgentSummaryMarkdown()).toBe("Did a thing.");
     });
   });
+
+  describe("RunLog.resume", () => {
+    test("seeds counters by replaying events.jsonl", () => {
+      const original = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      original.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.0125,
+      });
+      original.accumulateUsage({
+        inputTokens: 4,
+        outputTokens: 2,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        costUsd: 0.0075,
+      });
+
+      const resumed = RunLog.resume(original.dir, "bug-fix");
+      expect(resumed.getTokensIn()).toBe(14);
+      expect(resumed.getTokensOut()).toBe(7);
+      expect(resumed.getCostUsd()).toBeCloseTo(0.02, 6);
+    });
+
+    test("flags unknown cost contributions when an event lacks costUsd", () => {
+      const original = new RunLog(tmpRepo, "bug-fix", { slug: "demo" });
+      original.accumulateUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        // costUsd intentionally omitted (Codex backend)
+      });
+
+      const resumed = RunLog.resume(original.dir, "bug-fix");
+      expect(resumed.getCostUsd()).toBeUndefined();
+    });
+  });
 });

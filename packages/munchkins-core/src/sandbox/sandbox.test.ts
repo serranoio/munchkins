@@ -64,7 +64,7 @@ describe("gitWorktreeSandbox", () => {
   });
 
   test("happy path: creates worktree and tears down cleanup-only on pass", async () => {
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
 
     expect(isAbsolute(handle.cwd)).toBe(true);
     expect(handle.cwd.startsWith(repo.path)).toBe(true);
@@ -91,7 +91,7 @@ describe("gitWorktreeSandbox", () => {
   });
 
   test("teardown is cleanup-only on pass — no integration occurs", async () => {
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
     await commit(handle.cwd, "fix.ts", "export const x = 1;\n", "agent commit");
 
     // Caller has NOT integrated the branch into main. Teardown should still
@@ -111,7 +111,7 @@ describe("gitWorktreeSandbox", () => {
   });
 
   test("dirty worktree on pass throws and does not silently merge or leak", async () => {
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
 
     await Bun.write(join(handle.cwd, "wip.ts"), "uncommitted\n");
 
@@ -128,7 +128,7 @@ describe("gitWorktreeSandbox", () => {
   });
 
   test("fail-teardown preserves worktree and branch", async () => {
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
     await commit(handle.cwd, "wip.ts", "wip\n", "wip");
 
     await handle.teardown("fail", { failureReason: "lint failed" });
@@ -146,7 +146,7 @@ describe("gitWorktreeSandbox", () => {
   test("works when process.cwd() is outside repoRoot", async () => {
     process.chdir(tmpdir());
 
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
     expect(isAbsolute(handle.cwd)).toBe(true);
 
     await commit(handle.cwd, "fix.ts", "x\n", "fix");
@@ -160,7 +160,7 @@ describe("gitWorktreeSandbox", () => {
   test("works on a master-default repo", async () => {
     const masterRepo = await createRepo("master");
     try {
-      const handle = await gitWorktreeSandbox()("bug-fix", masterRepo.path);
+      const handle = await gitWorktreeSandbox().create("bug-fix", masterRepo.path);
       await commit(handle.cwd, "fix.ts", "x\n", "fix");
       await $`git merge --ff-only ${handle.env.BRANCH}`.cwd(masterRepo.path).env(gitEnv()).quiet();
       await handle.teardown("pass");
@@ -173,7 +173,7 @@ describe("gitWorktreeSandbox", () => {
   });
 
   test("renameBranch updates env.BRANCH so teardown deletes the renamed branch", async () => {
-    const handle = await gitWorktreeSandbox()("bug-fix", repo.path);
+    const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
     const originalBranch = handle.env.BRANCH;
     const slugBranch = "agent/fix-login-redirect-bug-deadbeef";
 
@@ -195,9 +195,9 @@ describe("gitWorktreeSandbox", () => {
 
   test("concurrent sandboxes do not collide", async () => {
     const handles = await Promise.all([
-      gitWorktreeSandbox()("bug-fix", repo.path),
-      gitWorktreeSandbox()("bug-fix", repo.path),
-      gitWorktreeSandbox()("bug-fix", repo.path),
+      gitWorktreeSandbox().create("bug-fix", repo.path),
+      gitWorktreeSandbox().create("bug-fix", repo.path),
+      gitWorktreeSandbox().create("bug-fix", repo.path),
     ]);
 
     const paths = new Set(handles.map((h) => h.cwd));
@@ -211,6 +211,64 @@ describe("gitWorktreeSandbox", () => {
     for (const h of handles) {
       await handle_safe_teardown(h, repo.path);
     }
+  });
+
+  describe("rehydrate", () => {
+    test("returns a handle whose cwd and env.BRANCH match the existing worktree", async () => {
+      const factory = gitWorktreeSandbox();
+      const created = await factory.create("bug-fix", repo.path);
+      try {
+        const rehydrated = await factory.rehydrate?.(
+          { kind: "git-worktree", path: created.cwd, branch: created.env.BRANCH },
+          repo.path,
+        );
+        expect(rehydrated?.cwd).toBe(created.cwd);
+        expect(rehydrated?.env.BRANCH).toBe(created.env.BRANCH);
+      } finally {
+        await $`git worktree remove --force ${created.cwd}`.cwd(repo.path).nothrow().quiet();
+        await $`git branch -D ${created.env.BRANCH}`.cwd(repo.path).nothrow().quiet();
+      }
+    });
+
+    test("hard-fails when the worktree directory is missing", async () => {
+      const factory = gitWorktreeSandbox();
+      await expect(
+        factory.rehydrate?.(
+          { kind: "git-worktree", path: "/tmp/does-not-exist-munchkins-test", branch: "agent/x" },
+          repo.path,
+        ),
+      ).rejects.toThrow(/no longer exists/);
+    });
+
+    test("hard-fails when the branch was deleted", async () => {
+      const factory = gitWorktreeSandbox();
+      const created = await factory.create("bug-fix", repo.path);
+      // Delete the branch out from under the worktree.
+      await $`git worktree remove --force ${created.cwd}`.cwd(repo.path).quiet();
+      await $`git branch -D ${created.env.BRANCH}`.cwd(repo.path).nothrow().quiet();
+      await expect(
+        factory.rehydrate?.(
+          { kind: "git-worktree", path: created.cwd, branch: created.env.BRANCH },
+          repo.path,
+        ),
+      ).rejects.toThrow();
+    });
+
+    test("succeeds (with logged warning) when the worktree has uncommitted changes", async () => {
+      const factory = gitWorktreeSandbox();
+      const created = await factory.create("bug-fix", repo.path);
+      try {
+        await Bun.write(join(created.cwd, "wip.ts"), "uncommitted\n");
+        const rehydrated = await factory.rehydrate?.(
+          { kind: "git-worktree", path: created.cwd, branch: created.env.BRANCH },
+          repo.path,
+        );
+        expect(rehydrated?.cwd).toBe(created.cwd);
+      } finally {
+        await $`git worktree remove --force ${created.cwd}`.cwd(repo.path).nothrow().quiet();
+        await $`git branch -D ${created.env.BRANCH}`.cwd(repo.path).nothrow().quiet();
+      }
+    });
   });
 });
 

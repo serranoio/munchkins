@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { type IntegrationStrategy, integrateMerge, integratePR } from "../integrate.js";
+import { type RunState, type RunStateStep, type StepKind, saveState } from "../resume/run-state.js";
 import { RunLog } from "../run-log.js";
-import type { SandboxFactory, SandboxHandle } from "../sandbox/sandbox.js";
+import type { SandboxFactory, SandboxHandle, SandboxState } from "../sandbox/sandbox.js";
 import { renameBranch } from "../worktree.js";
 import { AgentCLI } from "./agent-cli.js";
 import { parseSummaryWriterJson } from "./parse-summary-writer-json.js";
@@ -41,6 +42,8 @@ export interface RunResult {
   succeeded: boolean;
   failureReason?: string;
 }
+
+const RESUME_USER_MESSAGE_SNAPSHOT_ENV = "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT";
 
 export class AgentBuilder {
   // Internally writable so .rename() / .describe() / .sandbox() can update them.
@@ -212,18 +215,12 @@ export class AgentBuilder {
     }
 
     const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
-    const thinking = process.env.__MUNCHKINS_OPT_thinking === "true";
-    const streamOutput = verbose || thinking;
     const logger = new RunLogger(this.name, verbose);
-
-    let sandboxHandle: SandboxHandle | undefined;
-    let cwd: string;
-    let env: Record<string, string | undefined>;
 
     const userMessageText = readUserMessage(repoRoot);
 
     const sandboxPromise = this.sandbox
-      ? this.sandbox(this.name, repoRoot)
+      ? this.sandbox.create(this.name, repoRoot)
       : Promise.resolve(undefined);
     const slugPromise: Promise<SlugResult> = userMessageText
       ? getSlugWithRetry(userMessageText)
@@ -232,17 +229,12 @@ export class AgentBuilder {
         });
 
     const [slugResult, sandboxResult] = await Promise.all([slugPromise, sandboxPromise]);
-    sandboxHandle = sandboxResult;
+    const sandboxHandle: SandboxHandle | undefined = sandboxResult;
 
     if (sandboxHandle) {
       const finalBranch = `agent/${slugResult.slug}-${crypto.randomUUID().slice(0, 8)}`;
       await renameBranch(sandboxHandle.env.BRANCH, finalBranch, repoRoot);
       sandboxHandle.env.BRANCH = finalBranch;
-      cwd = sandboxHandle.cwd;
-      env = { ...process.env, ...sandboxHandle.env };
-    } else {
-      cwd = repoRoot;
-      env = { ...process.env, REPO_ROOT: repoRoot };
     }
 
     const runLog = new RunLog(repoRoot, this.name, { slug: slugResult.slug });
@@ -254,21 +246,107 @@ export class AgentBuilder {
         slug: slugResult.slug,
       });
     }
+
+    const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
+      .text()
+      .trim();
+    const state: RunState = {
+      schemaVersion: 1,
+      runId: runLog.dir.split("/").pop() ?? `${this.name}-${Date.now()}`,
+      agentName: this.name,
+      slug: slugResult.slug,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      phase: "steps",
+      repoRoot,
+      baseBranch,
+      userMessageSnapshot: userMessageText ?? "",
+      optsEnv: snapshotOptsEnv(),
+      sandboxState: sandboxHandleToState(sandboxHandle),
+      steps: this.buildInitialSteps(),
+    };
+    saveState(runLog.dir, state);
+
+    return this.runFromState(state, sandboxHandle, { runLogDir: runLog.dir, runLog, logger });
+  }
+
+  /**
+   * Execute (or resume) the run pipeline from a serialized RunState. Skips
+   * steps already marked completed; for in-progress steps, attempts CLI
+   * session resume when the state holds a session id, falling back to a
+   * fresh restart with a worktree-state preamble on session-not-found.
+   */
+  async runFromState(
+    state: RunState,
+    sandboxHandle: SandboxHandle | undefined,
+    deps?: { runLogDir?: string; runLog?: RunLog; logger?: RunLogger },
+  ): Promise<RunResult> {
+    const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
+    const thinking = process.env.__MUNCHKINS_OPT_thinking === "true";
+    const streamOutput = verbose || thinking;
+    const logger = deps?.logger ?? new RunLogger(this.name, verbose);
+    const runLogDir = deps?.runLogDir ?? "";
+    const runLog =
+      deps?.runLog ??
+      (runLogDir ? RunLog.resume(runLogDir, this.name) : new RunLog(state.repoRoot, this.name));
     const runStart = Date.now();
 
-    logger.starting(cwd, this.steps.length);
+    const cwd = sandboxHandle?.cwd ?? state.repoRoot;
+    const env: Record<string, string | undefined> = sandboxHandle
+      ? { ...process.env, ...sandboxHandle.env }
+      : { ...process.env, REPO_ROOT: state.repoRoot };
+
+    logger.starting(cwd, state.steps.filter((s) => s.kind !== "summary").length);
 
     let failureReason: string | undefined;
 
     try {
-      for (let i = 0; i < this.steps.length; i++) {
-        const step = this.steps[i];
-        logger.stepBanner(i, this.steps.length, step.kind);
-        if (step.kind === "agent") {
-          await this.runAgent(step, cwd, repoRoot, runLog, i, logger, streamOutput);
-        } else {
-          await this.runDeterministic(step, cwd, repoRoot, env, runLog, i, logger, streamOutput);
+      for (let i = 0; i < state.steps.length; i++) {
+        const stepState = state.steps[i];
+        if (stepState.kind === "summary") continue;
+        if (stepState.status === "completed") continue;
+
+        const step = this.steps[stepState.index];
+        if (!step) {
+          throw new Error(
+            `runFromState: step index ${stepState.index} no longer exists on agent "${this.name}" (agent code changed since run started)`,
+          );
         }
+
+        logger.stepBanner(stepState.index, this.steps.length, step.kind);
+        markStepInProgress(state, runLogDir, stepState);
+
+        if (step.kind === "agent" && stepState.kind === "agent") {
+          await this.runAgent(
+            step,
+            cwd,
+            state.repoRoot,
+            runLog,
+            stepState.index,
+            logger,
+            streamOutput,
+            stepState,
+            state,
+            runLogDir,
+          );
+        } else if (step.kind === "deterministic" && stepState.kind === "deterministic") {
+          await this.runDeterministic(
+            step,
+            cwd,
+            state.repoRoot,
+            env,
+            runLog,
+            stepState.index,
+            logger,
+            streamOutput,
+          );
+        } else {
+          throw new Error(
+            `runFromState: step kind mismatch at index ${stepState.index} (state=${stepState.kind}, agent=${step.kind})`,
+          );
+        }
+
+        markStepCompleted(state, runLogDir, stepState);
       }
     } catch (err) {
       failureReason = (err as Error).message;
@@ -276,41 +354,64 @@ export class AgentBuilder {
 
     // Summary writer phase — runs after main steps succeed, before integration.
     let commitMessage: string | undefined;
+    let summaryStep = state.steps.find((s) => s.kind === "summary");
     if (!failureReason && this.summaryWriterPrompt && sandboxHandle?.diff) {
-      const writerResult = await this.runSummaryWriter(
-        sandboxHandle,
-        cwd,
-        repoRoot,
-        runLog,
-        logger,
-        streamOutput,
-      );
-      if (writerResult.failureReason) {
-        failureReason = writerResult.failureReason;
+      if (!summaryStep) {
+        summaryStep = {
+          index: this.steps.length,
+          kind: "summary",
+          status: "pending",
+        };
+        state.steps.push(summaryStep);
+        saveState(runLogDir, state);
+      }
+      if (summaryStep.status !== "completed") {
+        markStepInProgress(state, runLogDir, summaryStep);
+        const writerResult = await this.runSummaryWriter(
+          sandboxHandle,
+          cwd,
+          state.repoRoot,
+          runLog,
+          logger,
+          streamOutput,
+          summaryStep,
+          state,
+          runLogDir,
+        );
+        if (writerResult.failureReason) {
+          failureReason = writerResult.failureReason;
+        } else {
+          commitMessage = writerResult.commitMessage;
+          summaryStep.commitMessage = commitMessage;
+          summaryStep.markdown = writerResult.markdown;
+          markStepCompleted(state, runLogDir, summaryStep);
+        }
       } else {
-        commitMessage = writerResult.commitMessage;
+        commitMessage = summaryStep.commitMessage;
       }
     }
 
     // Integration phase — strategy precedence: operator flag > author > default.
     let prUrl: string | undefined;
     if (sandboxHandle && !failureReason) {
+      state.phase = "integrating";
+      saveState(runLogDir, state);
+      // No-op if no rebase active; tolerates resume mid-rebase.
+      await $`git rebase --abort`.cwd(sandboxHandle.cwd).quiet().nothrow();
+
       const selection = this._selectIntegrationStrategy(process.env.__MUNCHKINS_OPT_integrate);
       if (!selection.ok) {
         failureReason = selection.reason;
       } else {
         const strategy = selection.strategy;
-        const baseBranch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(repoRoot).quiet())
-          .text()
-          .trim();
         const result = await strategy.run({
           workdir: sandboxHandle.cwd,
           branch: sandboxHandle.env.BRANCH,
-          repoRoot,
-          baseBranch,
+          repoRoot: state.repoRoot,
+          baseBranch: state.baseBranch,
           cli: AgentCLI.fromEnv(),
           postFixChecks: collectPostFixChecks(this.steps),
-          originalGoal: userMessageText ?? "",
+          originalGoal: state.userMessageSnapshot,
           commitMessage: runLog.getAgentSummaryCommitMessage() ?? commitMessage,
           markdownSummary: runLog.getAgentSummaryMarkdown(),
           log: (line) => logger.integrationLine(line),
@@ -345,6 +446,10 @@ export class AgentBuilder {
       }
     }
 
+    state.phase = failureReason ? "failed" : "done";
+    if (failureReason) state.failureReason = failureReason;
+    saveState(runLogDir, state);
+
     const totalDurationS = ((Date.now() - runStart) / 1000).toFixed(1);
 
     if (!failureReason) {
@@ -378,6 +483,16 @@ export class AgentBuilder {
     return { worktreePath, branch, succeeded: false, failureReason };
   }
 
+  private buildInitialSteps(): RunStateStep[] {
+    const out: RunStateStep[] = [];
+    for (let i = 0; i < this.steps.length; i++) {
+      const s = this.steps[i];
+      const kind: StepKind = s.kind === "agent" ? "agent" : "deterministic";
+      out.push({ index: i, kind, status: "pending" });
+    }
+    return out;
+  }
+
   private async runSummaryWriter(
     sandboxHandle: SandboxHandle,
     cwd: string,
@@ -385,7 +500,10 @@ export class AgentBuilder {
     runLog: RunLog,
     logger: RunLogger,
     streamOutput: boolean,
-  ): Promise<{ failureReason?: string; commitMessage?: string }> {
+    summaryStep: RunStateStep,
+    state: RunState,
+    runLogDir: string,
+  ): Promise<{ failureReason?: string; commitMessage?: string; markdown?: string }> {
     const diff = await sandboxHandle.diff?.();
     if (!diff?.trim()) {
       logger.summaryWriterEmptyDiff();
@@ -407,6 +525,11 @@ export class AgentBuilder {
       userPrompt,
       cwd,
       stream: streamOutput,
+      resumeSessionId: summaryStep.sessionId,
+      onSessionId: (sid) => {
+        summaryStep.sessionId = sid;
+        saveState(runLogDir, state);
+      },
     });
     const durationMs = Date.now() - startTime;
 
@@ -430,7 +553,7 @@ export class AgentBuilder {
       await $`git commit -m ${`docs(changelog): ${parsed.commitMessage}`}`.cwd(cwd).quiet();
     }
 
-    return { commitMessage: parsed.commitMessage };
+    return { commitMessage: parsed.commitMessage, markdown: parsed.markdown };
   }
 
   private _printDescribe(repoRoot: string): void {
@@ -537,16 +660,47 @@ export class AgentBuilder {
     stepIndex: number,
     logger: RunLogger,
     streamOutput: boolean,
+    stepState: RunStateStep,
+    state: RunState,
+    runLogDir: string,
   ): Promise<void> {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
     logger.agentStepStart(stepIndex, this.steps.length, systemPrompt, userPrompt);
     const startTime = Date.now();
-    const r = await spawnClaude({
+
+    const resumeSessionId = stepState.sessionId;
+    let r = await spawnClaude({
       systemPrompt,
       userPrompt,
       cwd,
       stream: streamOutput,
+      resumeSessionId,
+      onSessionId: (sid) => {
+        stepState.sessionId = sid;
+        saveState(runLogDir, state);
+      },
     });
+
+    if (resumeSessionId && isSessionNotFound(r)) {
+      // Session expired or not found — restart fresh with a worktree-state preamble.
+      logger.integrationLine(
+        `[resume] session ${resumeSessionId} for step ${stepIndex + 1} no longer available; restarting step with worktree-state hint.`,
+      );
+      stepState.sessionId = undefined;
+      saveState(runLogDir, state);
+      const preamble = await buildWorktreeStatePreamble(cwd);
+      r = await spawnClaude({
+        systemPrompt: `${systemPrompt}\n\n${preamble}`,
+        userPrompt,
+        cwd,
+        stream: streamOutput,
+        onSessionId: (sid) => {
+          stepState.sessionId = sid;
+          saveState(runLogDir, state);
+        },
+      });
+    }
+
     const durationMs = Date.now() - startTime;
     logger.stepResultOk(durationMs, r.usage);
     runLog.agentStep(stepIndex, systemPrompt, userPrompt, r.output, r.exitCode, durationMs);
@@ -623,6 +777,8 @@ export class AgentBuilder {
 }
 
 function readUserMessage(repoRoot: string): string | undefined {
+  const snapshot = process.env[RESUME_USER_MESSAGE_SNAPSHOT_ENV];
+  if (snapshot !== undefined) return snapshot;
   const raw = process.env.__MUNCHKINS_OPT_userMessage;
   if (!raw) return undefined;
   const candidate = isAbsolute(raw) ? raw : join(repoRoot, raw);
@@ -655,4 +811,48 @@ function collectPostFixChecks(steps: Step[]): string[] {
     if (s.kind === "deterministic") return [...s.commands];
   }
   return [];
+}
+
+function snapshotOptsEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k.startsWith("__MUNCHKINS_OPT_") && typeof v === "string") {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function sandboxHandleToState(handle: SandboxHandle | undefined): SandboxState {
+  if (!handle) return { kind: "none" };
+  return { kind: "git-worktree", path: handle.cwd, branch: handle.env.BRANCH ?? "" };
+}
+
+function markStepInProgress(state: RunState, runLogDir: string, step: RunStateStep): void {
+  step.status = "in-progress";
+  if (runLogDir) saveState(runLogDir, state);
+}
+
+function markStepCompleted(state: RunState, runLogDir: string, step: RunStateStep): void {
+  step.status = "completed";
+  if (runLogDir) saveState(runLogDir, state);
+}
+
+function isSessionNotFound(r: { exitCode: number; output: string }): boolean {
+  if (r.exitCode === 0) return false;
+  return /session not found|session.*does not exist|invalid session/i.test(r.output);
+}
+
+async function buildWorktreeStatePreamble(cwd: string): Promise<string> {
+  const status = (await $`git status --short`.cwd(cwd).quiet().nothrow()).text();
+  const diffStat = (await $`git diff --stat HEAD`.cwd(cwd).quiet().nothrow()).text();
+  return [
+    "NOTE: prior session was lost. Worktree state may already contain partial work — inspect git status before acting.",
+    "",
+    "## git status --short",
+    status.trim() || "(clean)",
+    "",
+    "## git diff --stat HEAD",
+    diffStat.trim() || "(no diff)",
+  ].join("\n");
 }

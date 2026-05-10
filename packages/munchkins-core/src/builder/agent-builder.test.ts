@@ -231,13 +231,15 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
    */
   function autoCommitSandbox() {
     const inner = gitWorktreeSandbox();
-    return async (name: string, repoRoot: string) => {
-      const handle = await inner(name, repoRoot);
-      await Bun.write(join(handle.cwd, "marker.ts"), "export const m = 1;\n");
-      const env = { ...process.env, ...TEST_GIT_IDENTITY };
-      await $`git add -A`.cwd(handle.cwd).env(env).quiet();
-      await $`git commit -m agent-step`.cwd(handle.cwd).env(env).quiet();
-      return handle;
+    return {
+      async create(name: string, repoRoot: string) {
+        const handle = await inner.create(name, repoRoot);
+        await Bun.write(join(handle.cwd, "marker.ts"), "export const m = 1;\n");
+        const env = { ...process.env, ...TEST_GIT_IDENTITY };
+        await $`git add -A`.cwd(handle.cwd).env(env).quiet();
+        await $`git commit -m agent-step`.cwd(handle.cwd).env(env).quiet();
+        return handle;
+      },
     };
   }
 
