@@ -39,5 +39,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-      - name: Publish to npm
+      - name: Publish munchkins-core to npm
+        run: bun publish --cwd packages/munchkins-core --access public
+      - name: Publish munchkins to npm
         run: bun publish --cwd packages/munchkins --access public
