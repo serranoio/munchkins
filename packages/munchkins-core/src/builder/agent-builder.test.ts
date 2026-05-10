@@ -243,12 +243,13 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
     };
   }
 
-  // These tests perform real git operations (init, worktree create, commits)
-  // through the full builder.run() pipeline. Locally they finish in <1s, but
-  // under load (turbo running test/typecheck/lint in parallel during the
-  // post-step deterministic loop) they can graze the default 5s timeout —
-  // bump to 30s so filesystem/git latency doesn't masquerade as test failure.
-  const E2E_TIMEOUT_MS = 30_000;
+  // Each end-to-end run drives ~10 git subprocess invocations (init, worktree
+  // add, add/commit pairs, rebase --abort, status, worktree remove, branch -D).
+  // Local runs finish in <500ms, but CI / loaded dev machines (e.g. running
+  // these tests alongside an active agent process) can stretch the same work
+  // 5–10×, so the budget needs to absorb that worst-case I/O contention rather
+  // than the typical fast path.
+  const E2E_TIMEOUT_MS = 60_000;
 
   test(
     "end-to-end: spy strategy is invoked with the expected context",
