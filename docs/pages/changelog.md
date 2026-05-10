@@ -4,6 +4,40 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(agent-cli): wait for Claude rate-limit reset and retry once (c7e4fa8)
+**2026-05-10 13:00 PDT · feat-small · 742.8s · $4.0512**
+
+**Goal:** When the Claude CLI exits because the user's usage limit was hit, sleep until the reported reset time and retry the spawn exactly once instead of failing the whole pipeline.
+
+**Outcome:** Switched the base `AgentCLI.runJsonStream` from `stderr: "inherit"` to `stderr: "pipe"` while forwarding bytes to `process.stderr` in real time, and added captured stderr to `SpawnResult`. Introduced file-local `isLimitHit`, `parseResetTimestamp`, and `sleepUntil` helpers in `agent-cli.ts`. `ClaudeCLI.spawn()` now inspects the result, sleeps until the parsed reset (unix-seconds or HH:MM, today/tomorrow), logs a single `⏳ Claude limit hit, waiting until <HH:MM:SS local>` line to stderr, and retries the same spawn exactly once. `CodexCLI.spawn` is untouched.
+
+**How to test manually:**
+
+1. From the repo root, run the new unit tests to exercise all branches (unix-seconds retry, HH:MM, parse failure, abort mid-wait, double-limit no-third-spawn, stderr-only detection, out-of-range HH:MM):
+   ```
+   bun test packages/munchkins-core/src/builder/agent-cli.test.ts
+   ```
+   Expect every test in the `ClaudeCLI rate-limit retry` describe block to pass in well under a second.
+2. Verify the repo-wide gates the deterministic loop runs:
+   ```
+   bun run typecheck
+   bun run lint
+   bun run scenario
+   ```
+   All three should be green.
+3. Out-of-band manual check that the unit tests don't cover — confirm stderr is still forwarded live (the change from `inherit` to `pipe` is the riskiest part). In a throwaway script, drive a Claude spawn that prints to stderr and watch it appear in your terminal in real time:
+   ```
+   bun -e "import { ClaudeCLI } from './packages/munchkins-core/src/builder/agent-cli.ts'; await new ClaudeCLI().spawn({ systemPrompt: '', userPrompt: 'say hi then exit', cwd: process.cwd() });"
+   ```
+   You should see Claude's stderr stream appear as it's produced (not buffered until exit). If you have a real rate-limited account handy, trigger a limit and confirm you see the single `⏳ Claude limit hit, waiting until …` line followed by exactly one retry after the reset.
+4. Edge case — abort during wait. In a REPL, kick off a spawn with a fake limit message in stderr that points ~60s into the future via a stub of `runJsonStream`, then abort the controller after 50ms; `spawn()` should reject promptly with the abort reason and not fire a second spawn. (This is exactly what the `aborted abortSignal during the wait` test asserts; rerun that single test in watch mode if you want to poke at it: `bun test packages/munchkins-core/src/builder/agent-cli.test.ts -t "aborted abortSignal"`.)
+
+**Files changed:**
+
+- packages/munchkins-core/src/builder/agent-cli.ts
+- packages/munchkins-core/src/builder/agent-cli.test.ts
+
+---
 ## feat(munchkins-core): add resume subcommand for interrupted runs
 **2026-05-09 20:11 PDT · feat-small · 1532.9s · $15.7377**
 
