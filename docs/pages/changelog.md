@@ -34,6 +34,19 @@ Autonomously-generated entries from agent runs. Most recent first.
 - docs/pages/agents/feat-small.md
 - docs/pages/agents/refactor.md
 - docs/pages/agents/custom.md
+
+---
+
+## fix(munchkins): make package bunx-executable via bin entry (b630027)
+**2026-05-10 13:29 PDT · bug-fix · 377.0s · $3.1778**
+
+**Goal:** Fix `bunx @serranolabs.io/munchkins skills install` failing with "could not determine executable to run for package" because the package declared no `bin` field.
+
+**Outcome:** Added a `bin` entry mapping `munchkins` to `./src/index.ts` in `packages/munchkins/package.json`, bumped the version from `0.1.1` to `0.1.2`, and prepended a `#!/usr/bin/env bun` shebang to `packages/munchkins/src/index.ts` so the entrypoint is directly runnable. The existing `if (import.meta.main)` dispatch in `src/index.ts` remains the single source of truth — no wrapper file was introduced and no dispatch logic changed. Also extended the timeout on two integration-dispatch end-to-end tests in `agent-builder.test.ts` to 30s to accommodate the ~10 git subprocess invocations per run on slower/concurrent CI environments. Publishing was intentionally not performed; the user can run that as a separate manual step. Consider a follow-up to document `bunx @serranolabs.io/munchkins …` usage in the README.
+
+**Files changed:**
+- packages/munchkins/package.json
+- packages/munchkins/src/index.ts
 - packages/munchkins-core/src/builder/agent-builder.test.ts
 
 ---
