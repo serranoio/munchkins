@@ -70,8 +70,16 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          {
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
+            echo "@serranolabs.io:registry=https://registry.npmjs.org/"
+            echo "registry=https://registry.npmjs.org/"
+          } > ~/.npmrc
       - name: Publish munchkins-core to npm
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun publish --cwd packages/munchkins-core --access public
       - name: Publish munchkins to npm
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun publish --cwd packages/munchkins --access public
