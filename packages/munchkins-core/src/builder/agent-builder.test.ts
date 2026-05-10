@@ -243,26 +243,41 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
     };
   }
 
-  test("end-to-end: spy strategy is invoked with the expected context", async () => {
-    const spy = makeSpyStrategy("merge");
-    const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
-    const result = await builder.run();
-    expect(result.succeeded).toBe(true);
-    expect(spy.calls.length).toBe(1);
-    // macOS symlinks /var → /private/var; compare via realpath.
-    const observed = spy.calls[0]?.repoRoot ?? "";
-    expect(observed.endsWith(repo.path) || repo.path.endsWith(observed)).toBe(true);
-    expect(spy.calls[0]?.baseBranch).toBe("main");
-  });
+  // These tests perform real git operations (init, worktree create, commits)
+  // through the full builder.run() pipeline. Locally they finish in <1s, but
+  // under load (turbo running test/typecheck/lint in parallel during the
+  // post-step deterministic loop) they can graze the default 5s timeout —
+  // bump to 30s so filesystem/git latency doesn't masquerade as test failure.
+  const E2E_TIMEOUT_MS = 30_000;
 
-  test("--integrate=garbage at run time → run fails with clear error", async () => {
-    process.env.__MUNCHKINS_OPT_integrate = "garbage";
-    const spy = makeSpyStrategy("merge");
-    const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
+  test(
+    "end-to-end: spy strategy is invoked with the expected context",
+    async () => {
+      const spy = makeSpyStrategy("merge");
+      const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
+      const result = await builder.run();
+      expect(result.succeeded).toBe(true);
+      expect(spy.calls.length).toBe(1);
+      // macOS symlinks /var → /private/var; compare via realpath.
+      const observed = spy.calls[0]?.repoRoot ?? "";
+      expect(observed.endsWith(repo.path) || repo.path.endsWith(observed)).toBe(true);
+      expect(spy.calls[0]?.baseBranch).toBe("main");
+    },
+    E2E_TIMEOUT_MS,
+  );
 
-    const result = await builder.run();
-    expect(result.succeeded).toBe(false);
-    expect(result.failureReason).toMatch(/unknown integration mode/);
-    expect(spy.calls.length).toBe(0);
-  });
+  test(
+    "--integrate=garbage at run time → run fails with clear error",
+    async () => {
+      process.env.__MUNCHKINS_OPT_integrate = "garbage";
+      const spy = makeSpyStrategy("merge");
+      const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
+
+      const result = await builder.run();
+      expect(result.succeeded).toBe(false);
+      expect(result.failureReason).toMatch(/unknown integration mode/);
+      expect(spy.calls.length).toBe(0);
+    },
+    E2E_TIMEOUT_MS,
+  );
 });
