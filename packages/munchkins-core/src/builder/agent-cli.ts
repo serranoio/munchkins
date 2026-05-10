@@ -223,9 +223,8 @@ function parseResetTimestamp(result: SpawnResult, now: Date = new Date()): Date 
   for (const text of sources) {
     const unix = text.match(LIMIT_RE_UNIX);
     if (unix) {
-      const seconds = Number(unix[1]);
-      if (!Number.isFinite(seconds) || seconds <= 0) return null;
-      return new Date(seconds * 1000);
+      // Regex matches \d{10,}, so Number() is always finite and positive.
+      return new Date(Number(unix[1]) * 1000);
     }
   }
   for (const text of sources) {
@@ -234,7 +233,7 @@ function parseResetTimestamp(result: SpawnResult, now: Date = new Date()): Date 
       const [hStr, mStr] = hhmm[1].split(":");
       const h = Number(hStr);
       const m = Number(mStr);
-      if (!Number.isFinite(h) || !Number.isFinite(m) || h > 23 || m > 59) return null;
+      if (h > 23 || m > 59) return null;
       const candidate = new Date(now);
       candidate.setHours(h, m, 0, 0);
       if (candidate.getTime() <= now.getTime()) {
@@ -253,12 +252,11 @@ function sleepUntil(target: Date, signal?: AbortSignal): Promise<void> {
   const ms = target.getTime() - Date.now();
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => {
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
       reject(signal?.reason ?? new Error("aborted"));
     };
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
