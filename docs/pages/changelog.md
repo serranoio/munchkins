@@ -4,6 +4,21 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## fix(builder): tolerate duplicate JSON envelope from summary writer
+**2026-05-09 19:17 PDT · bug-fix · 477.2s · $3.4697**
+
+**Goal:** Fix the summary writer JSON parser so it survives the model emitting the envelope twice in one response — a production failure mode (run `agent-composition-integration-df872018`) where the greedy regex spans both objects and `JSON.parse` chokes on the gap.
+
+**Outcome:** Replaced the regex-based extraction in `runSummaryWriter` with a string-aware balanced-brace forward scan extracted into a new `parseSummaryWriterJson` helper. The scan enumerates every top-level `{...}` object in the response, then iterates them last-to-first and returns the first one that parses and has both `commitMessage` and `markdown` as strings. Trailing ` ``` ` fence handling and existing type checks are preserved; backward-compatible for the single-envelope case. Added 12 unit tests covering the duplicate-emit regression, prose preambles, fenced output, braces inside string literals, escaped quotes, missing/wrong-typed fields, and a realistic fixture.
+
+**Files changed:**
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/parse-summary-writer-json.ts
+- packages/munchkins-core/src/builder/parse-summary-writer-json.test.ts
+
+**Notes for future debuggers:** The brace scanner is intentionally string-aware (tracks `inString` + `isEscaped`) so a JSON string value like `"see {a, b, c}"` or `"escaped \"quote\""` doesn't desync the depth counter. If the scanner ever encounters an unbalanced `{`, it stops scanning rather than emitting a partial candidate. Failure reason distinguishes "no JSON object found" from "N candidate object(s) inspected" so harness logs point at the right diagnosis.
+
+---
 ## feat(core): pluggable integration strategies + agent composition
 **2026-05-09 16:00 PDT · feat-small · 1264.1s · $13.0129**
 
