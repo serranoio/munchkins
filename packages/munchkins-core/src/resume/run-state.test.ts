@@ -2,32 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  listResumableRuns,
-  loadState,
-  type RunState,
-  saveState,
-  stateFilePath,
-} from "./run-state.js";
-
-function makeState(overrides: Partial<RunState> = {}): RunState {
-  return {
-    schemaVersion: 1,
-    runId: "demo-12345678",
-    agentName: "bug-fix",
-    slug: "demo",
-    startedAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    phase: "steps",
-    repoRoot: "/tmp/repo",
-    baseBranch: "main",
-    userMessageSnapshot: "fix it",
-    optsEnv: { __MUNCHKINS_OPT_userMessage: "/path/to/file.md" },
-    sandboxState: { kind: "git-worktree", path: "/tmp/wt", branch: "agent/demo-12345678" },
-    steps: [{ index: 0, kind: "agent", status: "pending" }],
-    ...overrides,
-  };
-}
+import { listResumableRuns, loadState, saveState, stateFilePath } from "./run-state.js";
+import { makeRunState } from "./test-fixtures.js";
 
 describe("run-state", () => {
   let tmp: string;
@@ -43,7 +19,7 @@ describe("run-state", () => {
   test("saveState + loadState round-trip", () => {
     const dir = join(tmp, "demo-12345678");
     mkdirSync(dir, { recursive: true });
-    const state = makeState();
+    const state = makeRunState();
     saveState(dir, state);
     const loaded = loadState(dir);
     expect(loaded?.runId).toBe(state.runId);
@@ -73,9 +49,9 @@ describe("run-state", () => {
       mkdirSync(a, { recursive: true });
       mkdirSync(b, { recursive: true });
       mkdirSync(c, { recursive: true });
-      saveState(a, makeState({ runId: "a-12345678", phase: "steps", slug: "a" }));
-      saveState(b, makeState({ runId: "b-12345678", phase: "integrating", slug: "b" }));
-      saveState(c, makeState({ runId: "c-12345678", phase: "done", slug: "c" }));
+      saveState(a, makeRunState({ runId: "a-12345678", phase: "steps", slug: "a" }));
+      saveState(b, makeRunState({ runId: "b-12345678", phase: "integrating", slug: "b" }));
+      saveState(c, makeRunState({ runId: "c-12345678", phase: "done", slug: "c" }));
 
       const ids = listResumableRuns(tmp)
         .map((r) => r.state.runId)
@@ -93,7 +69,7 @@ describe("run-state", () => {
       const empty = join(tmp, "empty-dir");
       mkdirSync(a, { recursive: true });
       mkdirSync(empty, { recursive: true });
-      saveState(a, makeState({ runId: "a-12345678" }));
+      saveState(a, makeRunState({ runId: "a-12345678" }));
 
       const ids = listResumableRuns(tmp).map((r) => r.state.runId);
       expect(ids).toEqual(["a-12345678"]);

@@ -2,7 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 import { type IntegrationStrategy, integrateMerge, integratePR } from "../integrate.js";
-import { type RunState, type RunStateStep, type StepKind, saveState } from "../resume/run-state.js";
+import {
+  RESUME_USER_MESSAGE_SNAPSHOT_ENV,
+  type RunState,
+  type RunStateStep,
+  type StepKind,
+  saveState,
+} from "../resume/run-state.js";
 import { RunLog } from "../run-log.js";
 import type { SandboxFactory, SandboxHandle, SandboxState } from "../sandbox/sandbox.js";
 import { renameBranch } from "../worktree.js";
@@ -42,8 +48,6 @@ export interface RunResult {
   succeeded: boolean;
   failureReason?: string;
 }
-
-const RESUME_USER_MESSAGE_SNAPSHOT_ENV = "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT";
 
 export class AgentBuilder {
   // Internally writable so .rename() / .describe() / .sandbox() can update them.
@@ -668,6 +672,11 @@ export class AgentBuilder {
     logger.agentStepStart(stepIndex, this.steps.length, systemPrompt, userPrompt);
     const startTime = Date.now();
 
+    const persistSessionId = (sid: string) => {
+      stepState.sessionId = sid;
+      saveState(runLogDir, state);
+    };
+
     const resumeSessionId = stepState.sessionId;
     let r = await spawnClaude({
       systemPrompt,
@@ -675,10 +684,7 @@ export class AgentBuilder {
       cwd,
       stream: streamOutput,
       resumeSessionId,
-      onSessionId: (sid) => {
-        stepState.sessionId = sid;
-        saveState(runLogDir, state);
-      },
+      onSessionId: persistSessionId,
     });
 
     if (resumeSessionId && isSessionNotFound(r)) {
@@ -694,10 +700,7 @@ export class AgentBuilder {
         userPrompt,
         cwd,
         stream: streamOutput,
-        onSessionId: (sid) => {
-          stepState.sessionId = sid;
-          saveState(runLogDir, state);
-        },
+        onSessionId: persistSessionId,
       });
     }
 

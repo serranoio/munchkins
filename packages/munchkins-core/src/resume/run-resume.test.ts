@@ -1,29 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runResume } from "./run-resume.js";
-import type { ResumableRun, RunState } from "./run-state.js";
-
-function makeState(overrides: Partial<RunState> = {}): RunState {
-  return {
-    schemaVersion: 1,
-    runId: "demo-12345678",
-    agentName: "bug-fix",
-    slug: "demo",
-    startedAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    phase: "steps",
-    repoRoot: "/tmp/repo",
-    baseBranch: "main",
-    userMessageSnapshot: "fix the bug",
-    optsEnv: { __MUNCHKINS_OPT_userMessage: "/path/to/file.md" },
-    sandboxState: { kind: "git-worktree", path: "/tmp/wt", branch: "agent/demo-12345678" },
-    steps: [{ index: 0, kind: "agent", status: "pending" }],
-    ...overrides,
-  };
-}
-
-function makeResumable(state: RunState): ResumableRun {
-  return { runLogDir: `/tmp/${state.runId}`, state };
-}
+import type { RunState } from "./run-state.js";
+import { makeResumableRun, makeRunState } from "./test-fixtures.js";
 
 describe("runResume", () => {
   const optsEnvKeys = ["__MUNCHKINS_OPT_userMessage", "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT"];
@@ -68,8 +46,8 @@ describe("runResume", () => {
   });
 
   test("--list with runs prints a table including each runId", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
-    const b = makeResumable(makeState({ runId: "other-bbbbbbbb", slug: "other" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const b = makeResumableRun(makeRunState({ runId: "other-bbbbbbbb", slug: "other" }));
     const lines: string[] = [];
     await runResume(["--list"], {
       repoRoot: "/tmp/repo",
@@ -83,8 +61,8 @@ describe("runResume", () => {
   });
 
   test("ambiguous slug fails with both runIds in the error", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
-    const b = makeResumable(makeState({ runId: "demo-bbbbbbbb", slug: "demo" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const b = makeResumableRun(makeRunState({ runId: "demo-bbbbbbbb", slug: "demo" }));
     const errs: string[] = [];
     const result = await runResume(["demo"], {
       repoRoot: "/tmp/repo",
@@ -100,7 +78,7 @@ describe("runResume", () => {
   });
 
   test("unique slug resolves to that run and invokes the agent", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
     let called = false;
     const fakeAgent = {
       sandbox: {
@@ -127,11 +105,11 @@ describe("runResume", () => {
   });
 
   test("--latest picks the most recent by startedAt", async () => {
-    const older = makeResumable(
-      makeState({ runId: "old-aaaaaaaa", slug: "old", startedAt: "2026-01-01T00:00:00.000Z" }),
+    const older = makeResumableRun(
+      makeRunState({ runId: "old-aaaaaaaa", slug: "old", startedAt: "2026-01-01T00:00:00.000Z" }),
     );
-    const newer = makeResumable(
-      makeState({ runId: "new-bbbbbbbb", slug: "new", startedAt: "2026-02-01T00:00:00.000Z" }),
+    const newer = makeResumableRun(
+      makeRunState({ runId: "new-bbbbbbbb", slug: "new", startedAt: "2026-02-01T00:00:00.000Z" }),
     );
     let observedRunId: string | undefined;
     const fakeAgent = {
@@ -159,7 +137,7 @@ describe("runResume", () => {
   });
 
   test("unknown id errors clearly", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
     const errs: string[] = [];
     const result = await runResume(["nope"], {
       repoRoot: "/tmp/repo",
@@ -172,8 +150,8 @@ describe("runResume", () => {
   });
 
   test("resuming restores opts env and the user-message snapshot env", async () => {
-    const a = makeResumable(
-      makeState({
+    const a = makeResumableRun(
+      makeRunState({
         runId: "demo-aaaaaaaa",
         slug: "demo",
         userMessageSnapshot: "the original goal",
@@ -203,7 +181,7 @@ describe("runResume", () => {
   });
 
   test("agent missing from registry errors clearly", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
     const errs: string[] = [];
     const result = await runResume(["demo-aaaaaaaa"], {
       repoRoot: "/tmp/repo",
@@ -217,7 +195,7 @@ describe("runResume", () => {
   });
 
   test("agent without sandbox.rehydrate errors clearly", async () => {
-    const a = makeResumable(makeState({ runId: "demo-aaaaaaaa", slug: "demo" }));
+    const a = makeResumableRun(makeRunState({ runId: "demo-aaaaaaaa", slug: "demo" }));
     const errs: string[] = [];
     const fakeAgent = {
       sandbox: {},

@@ -2,6 +2,11 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { isAbsolute, join } from "node:path";
 import type { SandboxState } from "../sandbox/sandbox.js";
 
+// Channel used by `munchkins resume` to surface the original run's user
+// message to a fresh process. Read by readUserMessage() in agent-builder.ts;
+// written by runResume() in run-resume.ts.
+export const RESUME_USER_MESSAGE_SNAPSHOT_ENV = "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT";
+
 export type RunPhase = "steps" | "integrating" | "done" | "failed";
 
 export type StepKind = "agent" | "deterministic" | "summary";

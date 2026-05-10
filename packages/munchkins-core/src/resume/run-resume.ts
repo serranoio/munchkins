@@ -1,6 +1,10 @@
 import { $ } from "bun";
 import { registry } from "../registry/registry.js";
-import { listResumableRuns, type ResumableRun } from "./run-state.js";
+import {
+  listResumableRuns,
+  RESUME_USER_MESSAGE_SNAPSHOT_ENV,
+  type ResumableRun,
+} from "./run-state.js";
 
 export interface RunResumeDeps {
   /** Inject for tests; defaults to the global registry. */
@@ -12,8 +16,6 @@ export interface RunResumeDeps {
   /** Override; defaults to deriving via `git rev-parse --show-toplevel`. */
   repoRoot?: string;
 }
-
-const USER_MESSAGE_SNAPSHOT_ENV = "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT";
 
 export interface RunResumeResult {
   exitCode: number;
@@ -111,7 +113,7 @@ export async function runResume(
   }
   // Surface the snapshotted user message via a dedicated env var so
   // readUserMessage prefers it over re-reading the (possibly edited) file.
-  process.env[USER_MESSAGE_SNAPSHOT_ENV] = state.userMessageSnapshot;
+  process.env[RESUME_USER_MESSAGE_SNAPSHOT_ENV] = state.userMessageSnapshot;
 
   const agent = reg.get(state.agentName) as
     | (import("../builder/agent-builder.js").AgentBuilder & {
