@@ -4,10 +4,40 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type the version to publish (must match packages/munchkins/package.json)"
+        required: true
+        type: string
 
 jobs:
+  guard:
+    name: guard (dispatch only)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify confirm input matches package version
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/munchkins/package.json').version")
+          CORE_VERSION=$(node -p "require('./packages/munchkins-core/package.json').version")
+          if [ "$PKG_VERSION" != "$CORE_VERSION" ]; then
+            echo "version mismatch: munchkins=$PKG_VERSION munchkins-core=$CORE_VERSION"
+            exit 1
+          fi
+          if [ "${{ inputs.confirm }}" != "$PKG_VERSION" ]; then
+            echo "confirm input '${{ inputs.confirm }}' does not match package version '$PKG_VERSION'"
+            exit 1
+          fi
+          echo "publishing v$PKG_VERSION"
+
   gate:
     name: gate (lint + test)
+    needs: [guard]
+    if: |
+      always() &&
+      (github.event_name == 'push' || needs.guard.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
