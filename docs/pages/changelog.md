@@ -4,6 +4,55 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(core): pluggable integration strategies + agent composition
+**2026-05-09 16:00 PDT · feat-small · 1264.1s · $13.0129**
+
+**Goal:** Add pluggable integration strategies (`integrateMerge` / `integratePR`) and `AgentBuilder` composition (`.thenRun()`), wiring operator > author > default precedence and moving integration out of sandbox teardown into the run layer.
+
+**Outcome:** Introduced `IntegrationStrategy` with `integrateMerge` (delegates to existing `integrateBranch`) and `integratePR` (rebase + push + open PR via `gh`/`glab`, with auto provider detection). Added `.integrate()`, `.thenRun()`, `.setSandbox()`, `.rename()`, `.describe()` builder methods; `.thenRun()` returns a new builder with steps concatenated and sandbox/summaryWriter/integration stripped per the S3 contract. Run-layer dispatch enforces precedence and surfaces a clear error for unknown modes; `gitWorktreeSandbox.teardown` is now cleanup-only. Added `--integrate <mode>` CLI flag, an example `bugfix-then-refactor` agent, and a composition scenario.
+
+**Note on this entry:** the run's summary writer emitted the JSON envelope twice and the harness's greedy regex parser failed to parse it, so this entry is hand-authored from the summary writer's first emitted block (verbatim). The agent's actual work — the diff, the tests, and the deterministic checks — completed cleanly before the parser tripped. A follow-up bug-fix to the harness regex will harden the parser against duplicate-emit hiccups.
+
+**New surface:**
+
+- Export: `integrateMerge()` (in `packages/munchkins-core/src/integrate.ts`)
+- Export: `integratePR(opts?)` (in `packages/munchkins-core/src/integrate.ts`)
+- Export: `detectProvider(repoRoot, remote)` (in `packages/munchkins-core/src/integrate.ts`)
+- Export: `IntegrationStrategy`, `IntegrationContext`, `IntegrationResult`, `IntegratePROptions` types (in `packages/munchkins-core/src/integrate.ts`)
+- Export: `AgentBuilder.integrate(strategy)` method (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `AgentBuilder.thenRun(other)` method (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `AgentBuilder.setSandbox(factory)` method (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `AgentBuilder.rename(name)` method (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `AgentBuilder.describe(description)` method (in `packages/munchkins-core/src/builder/agent-builder.ts`)
+- Export: `RunLog.getAgentSummaryMarkdown()`, `RunLog.getAgentSummaryCommitMessage()` (in `packages/munchkins-core/src/run-log.ts`)
+- Example agent: `bugfix-then-refactor` (in `packages/munchkins/agents/bugfix-then-refactor/bugfix-then-refactor-agent.ts`)
+- CLI flag: `--integrate <mode>` on every registered agent (registered in `packages/munchkins-core/src/registry/registry.ts`)
+- Env var: `__MUNCHKINS_OPT_integrate`
+- New scenario: `scenarios/composition.ts`
+- Other: `PassOpts.prUrl` field on `RunLogger.pass()` surfaces the PR URL in quiet and verbose output (in `packages/munchkins-core/src/builder/run-logger.ts`)
+- Removed: `IntegrateContext` export and `TeardownContext.integrate` field (sandbox teardown is now cleanup-only)
+
+**Files changed:**
+
+- package.json
+- packages/munchkins-core/src/builder/agent-builder.test.ts (new)
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/run-logger.test.ts (new)
+- packages/munchkins-core/src/builder/run-logger.ts
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/integrate.test.ts
+- packages/munchkins-core/src/integrate.ts
+- packages/munchkins-core/src/registry/registry.ts
+- packages/munchkins-core/src/run-log.test.ts
+- packages/munchkins-core/src/run-log.ts
+- packages/munchkins-core/src/sandbox/index.ts
+- packages/munchkins-core/src/sandbox/sandbox.test.ts
+- packages/munchkins-core/src/sandbox/sandbox.ts
+- packages/munchkins/agents/bugfix-then-refactor/bugfix-then-refactor-agent.ts (new)
+- scenarios/composition.ts (new)
+
+---
+
 ## feat(scheduler): add cron support for AgentBuilder + daemon subcommand
 **2026-05-09 15:25 PDT · feat-small · 642.2s · $6.0585**
 
