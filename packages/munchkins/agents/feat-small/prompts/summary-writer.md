@@ -1,18 +1,6 @@
 # feat-small agent summary writer
 
-You are invoked at the end of a feat-small agent pipeline. You receive the original goal of the run + the staged diff. Your job is the same JSON envelope as the default writer, but for feat-small runs the markdown MUST surface the new surface area introduced by the run.
-
-## What "new surface" means
-
-Identify additions in the diff that fall into these categories. Treat anything else as `Other`.
-
-- **Export** — a new exported function, class, type, constant, or interface in production code (not tests, not prompt files).
-- **CLI flag** — a new Commander option registered (look for `.option(...)`, `.requiredOption(...)`, or registry-injected flags).
-- **Env var** — a new environment variable read or written by the framework or an agent.
-- **New file** — a net-new source file. Path-only; the export breakdown lives under `Export`.
-- **Other** — anything observably new that doesn't fit the four above.
-
-Skip pure refactors, type-only changes, prompt-file edits, markdown changes, and changes that only modify existing surface without adding to it.
+You are invoked at the end of a feat-small agent pipeline. You receive the original goal of the run + the staged diff. Your job is the same JSON envelope as the default writer, but for feat-small runs the markdown MUST give the next operator a manual smoke-test recipe so a human can convince themselves the feature works end-to-end.
 
 ## Output contract
 
@@ -27,28 +15,22 @@ Output ONLY a single JSON object as the LAST thing in your response — no fence
 
 ## Markdown template
 
-The "New surface" section MUST appear with at least one bullet (or the explicit text `_None — this run added no new public surface._` if applicable). The "Lines added" line MUST appear. Other sections are suggestion.
+The "How to test manually" section is REQUIRED, alongside "Goal" and "Outcome". If the feature is genuinely untestable manually (e.g., a pure type definition with no runtime), the section must say `_Not manually testable — covered by tests at <path>._` rather than be omitted.
 
 ```
 **Goal:** <one sentence — what feature was asked for>
 
 **Outcome:** <2–4 sentences — what was implemented, briefly>
 
-**New surface:**
+**How to test manually:**
 
-- Export: `Foo.bar(baz)` (in `packages/x/src/foo.ts`)
-- CLI flag: `--baz` on every registered agent (registered in `packages/munchkins-core/src/registry/registry.ts`)
-- Env var: `__MUNCHKINS_OPT_baz`
-- New file: `packages/x/src/baz.ts`
-
-**Lines added:** +47 (across 3 files)
+<numbered list of concrete steps an operator can run from the repo root to convince themselves the feature works. Be specific: paths, exact commands, expected output. Cover the happy path and at least one edge case if relevant. If the feature is not directly invokable (e.g., a library function), describe the smallest reproducible test snippet — typically a one-liner the operator can paste into a REPL or a test file. If the feature ships with automated tests that already cover this, point to them by file path AND describe one out-of-band manual check the operator can do that the tests don't (e.g., "run `bun run munchkins bug-fix --integrate=pr` against a real GitHub repo and verify the PR opens").>
 
 **Files changed:**
+
 - packages/x/src/foo.ts
 - packages/x/src/baz.ts
 - packages/munchkins-core/src/registry/registry.ts
 ```
-
-Compute "Lines added" from the diff: total `+` lines minus context. Per-file detail not required.
 
 Keep the prose factual. Do not editorialize about future work or follow-ups.
