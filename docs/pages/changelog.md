@@ -4,6 +4,33 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(munchkins): launch agent runs inside cmux workspace when available (86ddc5a)
+**2026-05-10 19:35 PDT · feat-small · 604.6s · $4.0926**
+
+**Goal:** When `cmux` is on PATH, `bun run munchkins <agent> ...` should re-launch the same invocation inside a fresh `cmux new-workspace` and exit immediately; otherwise behavior is unchanged.
+
+**Outcome:** Added `packages/munchkins/src/cmux-launcher.ts` exporting two pure helpers (`shouldDelegateToCmux`, `buildCmuxCommand`) plus a Bun-test suite covering delegation gating and POSIX-safe command construction. Wired the pre-check into `packages/munchkins/src/index.ts` ahead of the existing registry dispatch, strips `--no-cmux` from argv before commander sees it, and extended the scenario harness audit guard to also reject real `cmux` invocations.
+
+**How to test manually:**
+
+1. From the repo root run `bun run lint && bun run typecheck && bun test packages/munchkins/src` — all three should pass; the new `cmux-launcher.test.ts` suite must be green.
+2. Run `bun run scenario` — should pass; the audit guard now also bans `cmux` invocations, but no scenario invokes one so there is no regression.
+3. With `cmux` NOT on PATH (verify via `which cmux` → empty), run `bun run munchkins bug-fix --user-message=./scratch/example.md` (create a tiny scratch file first). It should execute inline exactly as before — same stdout, same worktree behavior.
+4. With `cmux` installed and the cmux app running, run the same `bun run munchkins bug-fix --user-message=./scratch/example.md`. Expect a single stdout line of the form `Launching bug-fix in cmux workspace: bug-fix-<timestamp>` and the outer shell to return promptly. Open the cmux app and confirm a new workspace named `bug-fix-<timestamp>` exists with the agent running inside it.
+5. Opt-out via env: with cmux installed, run `MUNCHKINS_NO_CMUX=1 bun run munchkins bug-fix --user-message=./scratch/example.md`. It should run inline (no `Launching ...` line, no new workspace).
+6. Opt-out via flag: with cmux installed, run `bun run munchkins bug-fix --user-message=./scratch/example.md --no-cmux`. It should run inline, and commander must NOT error on the unknown flag (the flag is stripped before parsing). Also verify `bun run munchkins bug-fix --help` does not list `--no-cmux`.
+7. Meta/help paths stay inline with cmux installed — verify each prints normally without opening a workspace: `bun run munchkins --help`, `bun run munchkins`, `bun run munchkins daemon` (cancel with Ctrl-C), `bun run munchkins resume`, `bun run munchkins status`, `bun run munchkins skills install`, `bun run munchkins bug-fix --dry-run`, `bun run munchkins bug-fix --help`.
+8. Edge case for shell escaping: with cmux installed, run `bun run munchkins bug-fix --user-message="can't stop"` and confirm the workspace launches successfully (the single quote in the value is POSIX-escaped via `'\''` inside the `--command` payload, covered by `cmux-launcher.test.ts` as well).
+
+**Files changed:**
+
+- packages/munchkins/package.json
+- packages/munchkins/src/cmux-launcher.ts
+- packages/munchkins/src/cmux-launcher.test.ts
+- packages/munchkins/src/index.ts
+- scenarios/lib/mock-spawn-claude.ts
+
+---
 ## feat(munchkins-core): add Prompt.withSkill() helper (07441da)
 **2026-05-10 19:34 PDT · feat-small · 385.0s · $2.3356**
 
