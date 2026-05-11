@@ -4,6 +4,30 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(skills-install): walk all node_modules packages, never overwrite existing files (735871c)
+**2026-05-10 20:48 PDT · refactor · 631.1s · $3.5204**
+
+**Goal:** Rewrite `runSkillsInstall` so it discovers skills from every `node_modules/` package (not just `@serranolabs.io/munchkins`) and never clobbers an existing target file.
+
+**Outcome:** Replaced the single bundled-source loop with a decomposed pipeline: `_discoverSources` walks the cwd-anchored `node_modules/` (handling scoped `@scope/pkg` entries), preserves source-repo mode via the injected `packageRoot`, and orders `@serranolabs.io/munchkins` first then alphabetically. `_buildInstallPlan` deduplicates by slug, emits `⚠ slug collision` warnings before any writes, and `_runSkillsInstall` uses `existsSync` as the lock against overwrite — `cpSync` no longer carries `force: true`. Public surface (`runSkillsInstall(argv)`) is unchanged; testable helpers (`_resolveTarget`, `_discoverSources`, `_runSkillsInstall`) are exported with an underscore prefix. Added `skills-install.test.ts` covering all nine required cases (multi-package walk, kept-vs-installed, no-silent-overwrite, collision warning ordering, empty `skills/` ignored, exit 1 on empty, `--dest`, source-repo mode, summary structure).
+
+**Refactor type:** other
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins/src/skills-install.ts | 36 | 207 | +171 |
+| packages/munchkins/src/skills-install.test.ts | 0 | 186 | +186 |
+
+**Total:** 36 → 393 (Δ +357)
+
+**Files changed:**
+- packages/munchkins/src/skills-install.ts
+- packages/munchkins/src/skills-install.test.ts
+
+
+---
 ## refactor(munchkins): migrate default agents to withSkill() resolver (6870687)
 **2026-05-10 20:01 PDT · refactor · 436.7s · $3.3554**
 
