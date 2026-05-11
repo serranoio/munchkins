@@ -18,7 +18,7 @@ const builder = new AgentBuilder(
 )
   .add(
     new Prompt(GUIDELINES_PATH)
-      .withSystem(join(PROMPTS, "feat-small.md"))
+      .withSkill("feat-small")
       .withUserMessageFromOption("userMessage", {
         required: true,
         description: "Path to a markdown file (or inline text) describing the feature",

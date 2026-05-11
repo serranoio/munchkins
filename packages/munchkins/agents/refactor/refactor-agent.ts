@@ -16,7 +16,7 @@ const builder = new AgentBuilder(
 )
   .add(
     new Prompt(GUIDELINES_PATH)
-      .withSystem(join(PROMPTS, "refactor.md"))
+      .withSkill("refactor")
       .withUserMessageFromOption("userMessage", {
         required: true,
         description: "Path to a markdown file describing what to refactor",
