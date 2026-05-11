@@ -4,6 +4,53 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(munchkins): namespace default skills under munchkins: (536305f)
+**2026-05-10 20:52 PDT · refactor · 457.0s · $4.4814**
+
+**Goal:** Namespace every default skill that ships with `@serranolabs.io/munchkins` under the `munchkins:` colon-namespace, so consumer-authored skills can never collide with framework-managed ones.
+
+**Outcome:** Renamed the five default skill directories from `<slug>/` to `munchkins-<slug>/`, updated each `SKILL.md` frontmatter `name` to the colon-namespaced form (`munchkins:<slug>`), and rewrote the three default agents (`bugfix`, `feat-small`, `refactor`) to call `.withSkill("munchkins:<slug>")`. Extended `Prompt.withSkill()` with a single-line colon→hyphen path conversion (`name.replaceAll(":", "-")`) so namespaced names resolve to `.claude/skills/<vendor>-<slug>/SKILL.md`, with bare-name behavior preserved. Replaced the five `.claude/skills/<slug>` symlinks with `.claude/skills/munchkins-<slug>` symlinks pointing at the renamed sources, and updated the scenario harness to install the bug-fix skill under its new path. Also corrected the not-found error message from `install-skills` to `skills install`. Added four new tests in `prompt.test.ts` covering colon→hyphen conversion, bare-name regression, multi-segment namespaces, and resolved-path in the error message.
+
+**Refactor type:** other
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins-core/src/builder/prompt.test.ts | 89 | 124 | +35 |
+| packages/munchkins-core/src/builder/prompt.ts | 105 | 106 | +1 |
+| packages/munchkins/agents/bugfix/bugfix-agent.ts | 33 | 35 | +2 |
+| packages/munchkins/agents/feat-small/feat-small-agent.ts | 44 | 46 | +2 |
+| packages/munchkins/agents/refactor/refactor-agent.ts | 30 | 32 | +2 |
+| packages/munchkins/skills/{bug-fix → munchkins-bug-fix}/SKILL.md | 27 | 27 | 0 |
+| packages/munchkins/skills/{feat-small → munchkins-feat-small}/SKILL.md | 27 | 27 | 0 |
+| packages/munchkins/skills/{launch-munchkin → munchkins-launch-munchkin}/SKILL.md | 133 | 133 | 0 |
+| packages/munchkins/skills/{new-munchkin → munchkins-new-munchkin}/SKILL.md | 343 | 343 | 0 |
+| packages/munchkins/skills/{refactor → munchkins-refactor}/SKILL.md | 28 | 28 | 0 |
+| scenarios/index.ts | 322 | 329 | +7 |
+| .claude/skills/* (5 symlinks renamed) | 5 | 5 | 0 |
+
+**Total:** 1186 → 1235 (Δ +49)
+
+**Files changed:**
+- .claude/skills/bug-fix → .claude/skills/munchkins-bug-fix (symlink)
+- .claude/skills/feat-small → .claude/skills/munchkins-feat-small (symlink)
+- .claude/skills/launch-munchkin → .claude/skills/munchkins-launch-munchkin (symlink)
+- .claude/skills/new-munchkin → .claude/skills/munchkins-new-munchkin (symlink)
+- .claude/skills/refactor → .claude/skills/munchkins-refactor (symlink)
+- packages/munchkins-core/src/builder/prompt.ts
+- packages/munchkins-core/src/builder/prompt.test.ts
+- packages/munchkins/agents/bugfix/bugfix-agent.ts
+- packages/munchkins/agents/feat-small/feat-small-agent.ts
+- packages/munchkins/agents/refactor/refactor-agent.ts
+- packages/munchkins/skills/munchkins-bug-fix/SKILL.md (renamed)
+- packages/munchkins/skills/munchkins-feat-small/SKILL.md (renamed)
+- packages/munchkins/skills/munchkins-launch-munchkin/SKILL.md (renamed)
+- packages/munchkins/skills/munchkins-new-munchkin/SKILL.md (renamed)
+- packages/munchkins/skills/munchkins-refactor/SKILL.md (renamed)
+- scenarios/index.ts
+
+---
 ## refactor(skills-install): walk all node_modules packages, never overwrite existing files (735871c)
 **2026-05-10 20:48 PDT · refactor · 631.1s · $3.5204**
 
@@ -25,7 +72,6 @@ Autonomously-generated entries from agent runs. Most recent first.
 **Files changed:**
 - packages/munchkins/src/skills-install.ts
 - packages/munchkins/src/skills-install.test.ts
-
 
 ---
 ## refactor(munchkins): migrate default agents to withSkill() resolver (6870687)
