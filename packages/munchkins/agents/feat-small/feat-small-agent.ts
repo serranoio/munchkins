@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
+  BRANCH_PREFIX_OPTION,
   DEFAULT_CHECKS,
   defaultFixer,
   GUIDELINES_PATH,
@@ -16,11 +17,7 @@ const builder = new AgentBuilder(
   "Implement a new feature described in a markdown user-message file.",
   gitWorktreeSandbox(),
 )
-  .option("branchPrefix", {
-    type: "string",
-    required: false,
-    description: "Branch namespace prefix; defaults to 'agent'",
-  })
+  .option("branchPrefix", BRANCH_PREFIX_OPTION)
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:feat-small")
