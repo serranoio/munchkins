@@ -14,6 +14,11 @@ const builder = new AgentBuilder(
   "Refactor a target for DRY violations and clarity.",
   gitWorktreeSandbox(),
 )
+  .option("branchPrefix", {
+    type: "string",
+    required: false,
+    description: "Branch namespace prefix; defaults to 'agent'",
+  })
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:refactor")

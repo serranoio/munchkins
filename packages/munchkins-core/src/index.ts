@@ -1,5 +1,6 @@
 export {
   AgentBuilder,
+  type BranchPrefixResult,
   type CronConfig,
   deriveSlugDeterministic,
   type Fragment,
@@ -9,6 +10,7 @@ export {
   type OptionSchema,
   Prompt,
   type RunResult,
+  resolveBranchPrefix,
   SLUG_MAX,
   type SlugFallback,
   type SlugResult,

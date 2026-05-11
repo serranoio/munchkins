@@ -16,6 +16,11 @@ const builder = new AgentBuilder(
   "Implement a new feature described in a markdown user-message file.",
   gitWorktreeSandbox(),
 )
+  .option("branchPrefix", {
+    type: "string",
+    required: false,
+    description: "Branch namespace prefix; defaults to 'agent'",
+  })
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:feat-small")

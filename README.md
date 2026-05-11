@@ -62,6 +62,7 @@ One file, two surfaces. Edit `.claude/skills/munchkins-bug-fix/SKILL.md` and bot
 | `bug-fix` | Roots out the cause, applies the minimal fix, then refactors what it touched. |
 | `feat-small` | Adds a small, scoped feature end-to-end with refactor + test passes. |
 | `refactor` | Behavior-preserving cleanup: DRY, naming, decomposition, clarity. |
+| `director` | Cron-driven orchestrator: triages, plans, and dispatches work via the other agents. Requires `PURPOSE.md`. |
 
 ## Backends
 

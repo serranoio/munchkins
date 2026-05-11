@@ -18,5 +18,10 @@
     "type": "file",
     "name": "refactor",
     "label": "Refactor"
+  },
+  {
+    "type": "file",
+    "name": "director",
+    "label": "Director"
   }
 ]
