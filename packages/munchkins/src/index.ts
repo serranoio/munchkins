@@ -8,15 +8,14 @@ import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
 if (import.meta.main) {
   const hasCmux = Bun.which("cmux") !== null;
   if (shouldDelegateToCmux({ argv: process.argv, env: process.env, hasCmux })) {
-    const cmd = buildCmuxCommand({
+    const { command, workspaceName } = buildCmuxCommand({
       argv: process.argv,
       cwd: process.cwd(),
       now: Date.now(),
     });
     const agentName = process.argv[2];
-    const workspaceName = cmd[cmd.indexOf("--name") + 1];
     process.stdout.write(`Launching ${agentName} in cmux workspace: ${workspaceName}\n`);
-    const proc = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit" });
+    const proc = Bun.spawn(command, { stdout: "inherit", stderr: "inherit" });
     process.exit(await proc.exited);
   }
 

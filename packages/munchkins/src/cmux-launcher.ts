@@ -39,21 +39,30 @@ interface BuildCmuxCommandInput {
   now: number;
 }
 
-export function buildCmuxCommand(input: BuildCmuxCommandInput): string[] {
+export interface CmuxCommand {
+  command: string[];
+  workspaceName: string;
+}
+
+export function buildCmuxCommand(input: BuildCmuxCommandInput): CmuxCommand {
   const agentName = input.argv[2];
+  const workspaceName = `${agentName}-${input.now}`;
   const innerArgs = input.argv.slice(2).filter((a) => a !== "--no-cmux");
   const inner = ["bun", "run", input.argv[1], ...innerArgs];
-  const command = `MUNCHKINS_NO_CMUX=1 ${inner.map(shellEscape).join(" ")}`;
-  return [
-    "cmux",
-    "new-workspace",
-    "--name",
-    `${agentName}-${input.now}`,
-    "--cwd",
-    input.cwd,
-    "--command",
-    command,
-  ];
+  const innerCommand = `MUNCHKINS_NO_CMUX=1 ${inner.map(shellEscape).join(" ")}`;
+  return {
+    command: [
+      "cmux",
+      "new-workspace",
+      "--name",
+      workspaceName,
+      "--cwd",
+      input.cwd,
+      "--command",
+      innerCommand,
+    ],
+    workspaceName,
+  };
 }
 
 function shellEscape(value: string): string {

@@ -96,37 +96,38 @@ describe("shouldDelegateToCmux", () => {
   });
 });
 
+function getInnerCommand(command: string[]): string {
+  return command[command.indexOf("--command") + 1];
+}
+
 describe("buildCmuxCommand", () => {
   test("formats workspace name as <agent>-<now>", () => {
-    const cmd = buildCmuxCommand({
+    const { workspaceName } = buildCmuxCommand({
       argv: NORMAL_ARGV,
       cwd: "/repo",
       now: 1700000000000,
     });
-    const nameIdx = cmd.indexOf("--name");
-    expect(nameIdx).toBeGreaterThan(-1);
-    expect(cmd[nameIdx + 1]).toBe("bug-fix-1700000000000");
+    expect(workspaceName).toBe("bug-fix-1700000000000");
   });
 
   test("includes --cwd from input", () => {
-    const cmd = buildCmuxCommand({
+    const { command } = buildCmuxCommand({
       argv: NORMAL_ARGV,
       cwd: "/some/where",
       now: 1,
     });
-    const cwdIdx = cmd.indexOf("--cwd");
+    const cwdIdx = command.indexOf("--cwd");
     expect(cwdIdx).toBeGreaterThan(-1);
-    expect(cmd[cwdIdx + 1]).toBe("/some/where");
+    expect(command[cwdIdx + 1]).toBe("/some/where");
   });
 
   test("--command starts with MUNCHKINS_NO_CMUX=1, single-quotes every argv element, uses argv[1] absolute script path", () => {
-    const cmd = buildCmuxCommand({
+    const { command } = buildCmuxCommand({
       argv: ["bun", "/abs/index.ts", "bug-fix", "--user-message=./bug.md"],
       cwd: "/repo",
       now: 42,
     });
-    const cmdIdx = cmd.indexOf("--command");
-    const inner = cmd[cmdIdx + 1];
+    const inner = getInnerCommand(command);
     expect(inner.startsWith("MUNCHKINS_NO_CMUX=1 ")).toBe(true);
     expect(inner).toBe(
       "MUNCHKINS_NO_CMUX=1 'bun' 'run' '/abs/index.ts' 'bug-fix' '--user-message=./bug.md'",
@@ -134,24 +135,24 @@ describe("buildCmuxCommand", () => {
   });
 
   test("strips --no-cmux from inner command", () => {
-    const cmd = buildCmuxCommand({
+    const { command } = buildCmuxCommand({
       argv: ["bun", "/abs/index.ts", "bug-fix", "--no-cmux", "--user-message=./bug.md"],
       cwd: "/repo",
       now: 1,
     });
-    const inner = cmd[cmd.indexOf("--command") + 1];
+    const inner = getInnerCommand(command);
     expect(inner).not.toContain("--no-cmux");
     expect(inner).toContain("'bug-fix'");
     expect(inner).toContain("'--user-message=./bug.md'");
   });
 
   test("escapes literal single quotes using POSIX '\\'' wrap", () => {
-    const cmd = buildCmuxCommand({
+    const { command } = buildCmuxCommand({
       argv: ["bun", "/abs/index.ts", "bug-fix", "--user-message=can't stop"],
       cwd: "/repo",
       now: 1,
     });
-    const inner = cmd[cmd.indexOf("--command") + 1];
+    const inner = getInnerCommand(command);
     expect(inner).toContain("'--user-message=can'\\''t stop'");
   });
 });
