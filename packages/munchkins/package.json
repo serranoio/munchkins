@@ -27,7 +27,8 @@
     "./agents/refactor": "./agents/refactor/refactor-agent.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
   },
   "dependencies": {
     "@serranolabs.io/munchkins-core": "workspace:*"

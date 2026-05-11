@@ -91,9 +91,9 @@ export function setupAuditGuard(): void {
     opts?: unknown,
   ) => {
     const argv = Array.isArray(cmd) ? cmd : Array.isArray(cmd?.cmd) ? cmd.cmd : [];
-    if (argv[0] === "claude") {
+    if (argv[0] === "claude" || argv[0] === "cmux") {
       claudeAttempts.push(argv);
-      throw new Error(`MOCK GUARD: real \`claude\` invocation attempted: ${argv.join(" ")}`);
+      throw new Error(`MOCK GUARD: real \`${argv[0]}\` invocation attempted: ${argv.join(" ")}`);
     }
     return (originalSpawn as (c: SpawnArg, o?: unknown) => unknown)(cmd, opts);
   };
