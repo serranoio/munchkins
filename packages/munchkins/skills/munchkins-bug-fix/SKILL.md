@@ -1,5 +1,5 @@
 ---
-name: bug-fix
+name: munchkins:bug-fix
 description: Diagnose and fix a bug end-to-end via the munchkins bug-fix agent — runs in a fresh worktree, applies a minimal fix, refactors what was touched, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a bug fixed via the deterministic agent rather than inline editing.
 ---
 

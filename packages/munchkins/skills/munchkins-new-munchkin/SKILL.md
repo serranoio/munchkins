@@ -1,5 +1,5 @@
 ---
-name: new-munchkin
+name: munchkins:new-munchkin
 description: Author or revise a default agent inside a repo that consumes @serranolabs.io/munchkins. Each munchkin is co-authored as a Claude Code skill (the workflow prose) plus a thin agent .ts (composition + deterministic scaffolding). Use when the user wants to scaffold a NEW munchkin agent OR edit an existing one — signaled by phrases like "new munchkin", "add a default agent", "scaffold a munchkin agent", "design an agent for this repo", "edit the X munchkin", "tweak the X agent's prompt", "change X's archetype", "demote X to a single-step agent". Do NOT use to run an existing agent (use launch-munchkin) or to create a generic standalone Claude Code skill (use skill-creator).
 ---
 

@@ -44,7 +44,7 @@ describe("Prompt.withSkill", () => {
 
   test("3: throws clear error when SKILL.md missing", () => {
     expect(() => new Prompt().withSkill("missing").resolve(tmpDir)).toThrow(
-      /Skill 'missing' not found.*install-skills/s,
+      /Skill 'missing' not found.*skills install/s,
     );
   });
 
@@ -85,5 +85,40 @@ describe("Prompt.withSkill", () => {
     const b = writeFile("b.md", "BBB");
     const { systemPrompt } = new Prompt(a).withSystem(b).resolve(tmpDir);
     expect(systemPrompt).toBe("AAA\n\nBBB");
+  });
+
+  test("9: colon namespace converts to hyphen path", () => {
+    writeSkill("munchkins-bug-fix", "---\nname: munchkins:bug-fix\n---\n\nX");
+    const { systemPrompt } = new Prompt().withSkill("munchkins:bug-fix").resolve(tmpDir);
+    expect(systemPrompt).toBe("X");
+  });
+
+  test("10: bare name (no colon) resolves to bare directory", () => {
+    writeSkill("foo", "---\nname: foo\n---\n\nfoo-body");
+    const { systemPrompt } = new Prompt().withSkill("foo").resolve(tmpDir);
+    expect(systemPrompt).toBe("foo-body");
+  });
+
+  test("11: multi-segment namespace converts every colon to hyphen", () => {
+    writeSkill(
+      "lumen-incident-postmortem",
+      "---\nname: lumen:incident-postmortem\n---\n\npostmortem-body",
+    );
+    const { systemPrompt } = new Prompt().withSkill("lumen:incident-postmortem").resolve(tmpDir);
+    expect(systemPrompt).toBe("postmortem-body");
+  });
+
+  test("12: error message includes resolved path for namespaced skill", () => {
+    let caught: Error | undefined;
+    try {
+      new Prompt().withSkill("munchkins:missing").resolve(tmpDir);
+    } catch (err) {
+      caught = err as Error;
+    }
+    expect(caught).toBeDefined();
+    const msg = caught?.message ?? "";
+    expect(msg).toContain("munchkins:missing");
+    expect(msg).toContain(".claude/skills/munchkins-missing/SKILL.md");
+    expect(msg).toContain("skills install");
   });
 });

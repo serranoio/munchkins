@@ -15,10 +15,12 @@ const builder = new AgentBuilder(
   gitWorktreeSandbox(),
 )
   .add(
-    new Prompt(GUIDELINES_PATH).withSkill("refactor").withUserMessageFromOption("userMessage", {
-      required: true,
-      description: "Path to a markdown file describing what to refactor",
-    }),
+    new Prompt(GUIDELINES_PATH)
+      .withSkill("munchkins:refactor")
+      .withUserMessageFromOption("userMessage", {
+        required: true,
+        description: "Path to a markdown file describing what to refactor",
+      }),
   )
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },

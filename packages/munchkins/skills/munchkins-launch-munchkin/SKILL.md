@@ -1,5 +1,5 @@
 ---
-name: launch-munchkin
+name: munchkins:launch-munchkin
 description: Use this skill when the user wants to delegate a coding task to a munchkins background agent in this repo — signaled by words like "munchkin", "spawn an agent", "send this to a refactor agent", "launch a bug-fix agent", "kick off feat-small", or by naming a munchkin subcommand directly (bug-fix, feat-small, refactor). Do NOT use this skill when the user wants Claude to do the work inline; only when they want to hand off to a separate background agent run.
 ---
 

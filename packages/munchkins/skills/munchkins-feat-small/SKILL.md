@@ -1,5 +1,5 @@
 ---
-name: feat-small
+name: munchkins:feat-small
 description: Implement a small new feature via the munchkins feat-small agent — adds the feature in a fresh worktree, refactors touched files, writes minimal tests for new public surface, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a small feature added via the deterministic agent rather than inline editing.
 ---
 

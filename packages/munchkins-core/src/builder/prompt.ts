@@ -29,10 +29,11 @@ export class Prompt {
   }
 
   withSkill(name: string): this {
+    const segment = name.replaceAll(":", "-");
     this.systemSources.push({
       kind: "skill",
       name,
-      path: `.claude/skills/${name}/SKILL.md`,
+      path: `.claude/skills/${segment}/SKILL.md`,
     });
     return this;
   }
@@ -59,7 +60,7 @@ export class Prompt {
         if (src.kind === "skill") {
           if (!existsSync(absPath)) {
             throw new Error(
-              `Skill '${src.name}' not found at ${src.path}. Run 'bun run munchkins install-skills' to scaffold default skills.`,
+              `Skill '${src.name}' not found at ${src.path}. Run 'bun run munchkins skills install' to scaffold default skills.`,
             );
           }
           return stripFrontmatter(readFileSync(absPath, "utf-8"), absPath);

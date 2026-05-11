@@ -222,10 +222,17 @@ async function run(): Promise<ScenarioResult> {
     cleanup = sandbox.cleanup;
 
     // Install the bug-fix skill into the sandbox so the agent's
-    // `.withSkill("bug-fix")` resolves against the sandboxed repo root,
-    // mirroring what `bun run munchkins install-skills` would do for a user.
-    const skillSrc = join(repoRoot, "packages", "munchkins", "skills", "bug-fix", "SKILL.md");
-    const skillDestDir = join(sandbox.path, ".claude", "skills", "bug-fix");
+    // `.withSkill("munchkins:bug-fix")` resolves against the sandboxed repo root,
+    // mirroring what `bun run munchkins skills install` would do for a user.
+    const skillSrc = join(
+      repoRoot,
+      "packages",
+      "munchkins",
+      "skills",
+      "munchkins-bug-fix",
+      "SKILL.md",
+    );
+    const skillDestDir = join(sandbox.path, ".claude", "skills", "munchkins-bug-fix");
     mkdirSync(skillDestDir, { recursive: true });
     copyFileSync(skillSrc, join(skillDestDir, "SKILL.md"));
 

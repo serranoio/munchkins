@@ -1,5 +1,5 @@
 ---
-name: refactor
+name: munchkins:refactor
 description: Behavior-preserving refactor of a target via the munchkins refactor agent — runs in a fresh worktree, applies DRY/clarity changes inside the named scope, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants refactoring done via the deterministic agent rather than inline editing.
 ---
 
