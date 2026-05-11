@@ -4,6 +4,63 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(munchkins): add SKILL.md discovery surface for default agents (bd12fe3)
+**2026-05-10 19:20 PDT · feat-small · 265.9s · $2.0450**
+
+**Goal:** Add Claude Code `SKILL.md` files for the three default munchkins agents (`bug-fix`, `refactor`, `feat-small`) and symlink them into `.claude/skills/` so Claude Code discovers them as `/<name>`.
+
+**Outcome:** Created three new `SKILL.md` files under `packages/munchkins/skills/<name>/` with YAML frontmatter (`name`, `description`) followed by the body copied byte-for-byte from each agent's source prompt md. Added three relative symlinks under `.claude/skills/` pointing at the corresponding skill directories. No agent `.ts` files were modified — content is duplicated with `agents/<name>/prompts/<name>.md` for this MVP; the later migration will collapse the duplication.
+
+**How to test manually:**
+
+1. From the repo root, confirm the three new SKILL.md files exist:
+   ```sh
+   ls packages/munchkins/skills/bug-fix/SKILL.md packages/munchkins/skills/refactor/SKILL.md packages/munchkins/skills/feat-small/SKILL.md
+   ```
+   Expected: all three paths print with no error.
+2. Verify the frontmatter is well-formed and only contains `name` and `description`:
+   ```sh
+   head -5 packages/munchkins/skills/bug-fix/SKILL.md
+   head -5 packages/munchkins/skills/refactor/SKILL.md
+   head -5 packages/munchkins/skills/feat-small/SKILL.md
+   ```
+   Expected: each starts with `---`, has `name: <slug>` matching the directory, `description: ...` (one sentence), and closes with `---`.
+3. Verify the body of each SKILL.md is byte-identical to the source prompt md (skipping the 4-line frontmatter + blank line):
+   ```sh
+   diff <(tail -n +6 packages/munchkins/skills/bug-fix/SKILL.md) packages/munchkins/agents/bugfix/prompts/bug-fix.md
+   diff <(tail -n +6 packages/munchkins/skills/refactor/SKILL.md) packages/munchkins/agents/refactor/prompts/refactor.md
+   diff <(tail -n +6 packages/munchkins/skills/feat-small/SKILL.md) packages/munchkins/agents/feat-small/prompts/feat-small.md
+   ```
+   Expected: all three diffs produce no output.
+4. Verify each symlink resolves to the expected relative target:
+   ```sh
+   readlink .claude/skills/bug-fix
+   readlink .claude/skills/refactor
+   readlink .claude/skills/feat-small
+   ```
+   Expected: each prints `../../packages/munchkins/skills/<name>`.
+5. Verify the existing agents still register and run:
+   ```sh
+   bun run munchkins --help
+   ```
+   Expected: usage lists `bug-fix`, `refactor`, and `feat-small` subcommands (no regression).
+6. Verify the source prompt files were not modified by the change:
+   ```sh
+   git diff HEAD~1 -- packages/munchkins/agents/bugfix/prompts/bug-fix.md packages/munchkins/agents/refactor/prompts/refactor.md packages/munchkins/agents/feat-small/prompts/feat-small.md
+   ```
+   Expected: no output (files unchanged in this commit).
+7. Out-of-band Claude Code discovery check: open this repo in Claude Code and confirm that typing `/bug-fix`, `/refactor`, and `/feat-small` each surface the new skills with their full descriptions (matches the strings in `packages/munchkins/skills/<name>/SKILL.md`).
+
+**Files changed:**
+
+- packages/munchkins/skills/bug-fix/SKILL.md
+- packages/munchkins/skills/refactor/SKILL.md
+- packages/munchkins/skills/feat-small/SKILL.md
+- .claude/skills/bug-fix (symlink)
+- .claude/skills/refactor (symlink)
+- .claude/skills/feat-small (symlink)
+
+---
 ## feat(docs): re-orient onboarding around the new-munchkin skill (deb5605)
 **2026-05-10 14:10 PDT · feat-small · 458.8s · $3.2744**
 
