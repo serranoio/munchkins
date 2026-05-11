@@ -28,7 +28,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test src"
+    "test": "bun test src agents"
   },
   "dependencies": {
     "@serranolabs.io/munchkins-core": "workspace:*"

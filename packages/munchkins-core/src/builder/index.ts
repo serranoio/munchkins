@@ -1,8 +1,10 @@
 export {
   AgentBuilder,
+  type BranchPrefixResult,
   type CronConfig,
   type OptionSchema,
   type RunResult,
+  resolveBranchPrefix,
   type Verbosity,
 } from "./agent-builder.js";
 export {

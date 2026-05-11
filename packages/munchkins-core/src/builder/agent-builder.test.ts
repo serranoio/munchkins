@@ -11,7 +11,7 @@ import {
   integratePR,
 } from "../integrate.js";
 import { gitWorktreeSandbox } from "../sandbox/sandbox.js";
-import { AgentBuilder } from "./agent-builder.js";
+import { AgentBuilder, resolveBranchPrefix } from "./agent-builder.js";
 import { Prompt } from "./prompt.js";
 
 const TEST_GIT_IDENTITY = {
@@ -206,10 +206,85 @@ describe("AgentBuilder._selectIntegrationStrategy precedence", () => {
   });
 });
 
+describe("resolveBranchPrefix", () => {
+  test("undefined → default 'agent' prefix", () => {
+    const r = resolveBranchPrefix(undefined);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.prefix).toBe("agent");
+  });
+
+  test("empty string → default 'agent' prefix", () => {
+    const r = resolveBranchPrefix("");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.prefix).toBe("agent");
+  });
+
+  test("'director' → 'director'", () => {
+    const r = resolveBranchPrefix("director");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.prefix).toBe("director");
+  });
+
+  test("'my_team-2' (alphanumeric + dash + underscore) → accepted", () => {
+    const r = resolveBranchPrefix("my_team-2");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.prefix).toBe("my_team-2");
+  });
+
+  test("'foo/bar' (contains slash) → rejected with clear error", () => {
+    const r = resolveBranchPrefix("foo/bar");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/invalid --branch-prefix/);
+      expect(r.reason).toMatch(/foo\/bar/);
+      expect(r.reason).toMatch(/no slashes/);
+    }
+  });
+
+  test("'has space' → rejected", () => {
+    const r = resolveBranchPrefix("has space");
+    expect(r.ok).toBe(false);
+  });
+
+  test("'dot.allowed?' → rejected (dot not in slug set)", () => {
+    const r = resolveBranchPrefix("dot.x");
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("AgentBuilder.handlesDryRun opt-out", () => {
+  test("fresh builder defaults to handlesDryRun=false", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.getHandlesDryRun()).toBe(false);
+  });
+
+  test("handlesDryRun() with no arg toggles to true (matches director usage)", () => {
+    const builder = new AgentBuilder("a");
+    builder.handlesDryRun();
+    expect(builder.getHandlesDryRun()).toBe(true);
+  });
+
+  test("handlesDryRun(false) explicitly resets to false", () => {
+    const builder = new AgentBuilder("a");
+    builder.handlesDryRun(true);
+    builder.handlesDryRun(false);
+    expect(builder.getHandlesDryRun()).toBe(false);
+  });
+
+  test("handlesDryRun() returns the builder for chaining", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.handlesDryRun()).toBe(builder);
+  });
+});
+
 describe("AgentBuilder.run integration dispatch end-to-end", () => {
   let repo: Repo;
   const originalCwd = process.cwd();
-  const envKeysToScrub = ["__MUNCHKINS_OPT_integrate", "__MUNCHKINS_OPT_userMessage"];
+  const envKeysToScrub = [
+    "__MUNCHKINS_OPT_integrate",
+    "__MUNCHKINS_OPT_userMessage",
+    "__MUNCHKINS_OPT_branchPrefix",
+  ];
 
   beforeEach(async () => {
     repo = await createRepo();
@@ -278,6 +353,41 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
       expect(result.succeeded).toBe(false);
       expect(result.failureReason).toMatch(/unknown integration mode/);
       expect(spy.calls.length).toBe(0);
+    },
+    E2E_TIMEOUT_MS,
+  );
+
+  test(
+    "default --branch-prefix → final branch is agent/<slug>-<uuid> (regression guard)",
+    async () => {
+      const spy = makeSpyStrategy("merge");
+      const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
+      const result = await builder.run();
+      expect(result.succeeded).toBe(true);
+      expect(result.branch).toMatch(/^agent\/[a-z0-9-]+-[0-9a-f]{8}$/);
+    },
+    E2E_TIMEOUT_MS,
+  );
+
+  test(
+    "--branch-prefix=director → final branch is director/<slug>-<uuid>",
+    async () => {
+      process.env.__MUNCHKINS_OPT_branchPrefix = "director";
+      const spy = makeSpyStrategy("merge");
+      const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox()).integrate(spy);
+      const result = await builder.run();
+      expect(result.succeeded).toBe(true);
+      expect(result.branch).toMatch(/^director\/[a-z0-9-]+-[0-9a-f]{8}$/);
+    },
+    E2E_TIMEOUT_MS,
+  );
+
+  test(
+    "--branch-prefix=foo/bar (contains slash) → run fails with clear error",
+    async () => {
+      process.env.__MUNCHKINS_OPT_branchPrefix = "foo/bar";
+      const builder = new AgentBuilder("test-agent", "test", autoCommitSandbox());
+      await expect(builder.run()).rejects.toThrow(/invalid --branch-prefix/);
     },
     E2E_TIMEOUT_MS,
   );

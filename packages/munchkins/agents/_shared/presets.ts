@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Prompt } from "@serranolabs.io/munchkins-core";
+import { type OptionSchema, Prompt } from "@serranolabs.io/munchkins-core";
 
 export function getAgentPromptsDir(importUrl: string): string {
   return join(dirname(fileURLToPath(importUrl)), "prompts");
@@ -21,6 +21,14 @@ export const DEFAULT_CHECKS: readonly string[] = [
   "bun run scenario",
   "bun test --pass-with-no-tests",
 ];
+
+// Shared --branch-prefix declaration for the default agents. Director dispatch
+// passes this through to child runs to scope their branches under `director/*`.
+export const BRANCH_PREFIX_OPTION: OptionSchema = {
+  type: "string",
+  required: false,
+  description: "Branch namespace prefix; defaults to 'agent'",
+};
 
 export function defaultFixer(): Prompt {
   return new Prompt(DETERMINISTIC_FIXER_PATH);

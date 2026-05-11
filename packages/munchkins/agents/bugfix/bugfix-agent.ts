@@ -1,5 +1,6 @@
 import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
+  BRANCH_PREFIX_OPTION,
   DEFAULT_CHECKS,
   defaultFixer,
   defaultSummaryWriter,
@@ -12,6 +13,7 @@ const builder = new AgentBuilder(
   "Fix a bug described in a markdown user-message file.",
   gitWorktreeSandbox(),
 )
+  .option("branchPrefix", BRANCH_PREFIX_OPTION)
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:bug-fix")

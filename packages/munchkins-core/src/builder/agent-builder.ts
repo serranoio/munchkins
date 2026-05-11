@@ -62,6 +62,7 @@ export class AgentBuilder {
   private summaryWriterPrompt?: Prompt;
   private cronConfig?: CronConfig;
   private integration?: IntegrationStrategy;
+  private _handlesDryRun = false;
 
   constructor(name: string, description?: string, sandbox?: SandboxFactory) {
     this.name = name;
@@ -210,13 +211,34 @@ export class AgentBuilder {
     return this.cronConfig;
   }
 
+  /**
+   * Opt out of the framework's default `--dry-run` short-circuit. When set,
+   * `run()` executes the full pipeline even with `__MUNCHKINS_OPT_dryRun=true`
+   * and the agent's own deterministic steps are expected to honor the flag.
+   * Used by the director, whose dry-run scope is "skip dispatch only".
+   */
+  handlesDryRun(value = true): this {
+    this._handlesDryRun = value;
+    return this;
+  }
+
+  getHandlesDryRun(): boolean {
+    return this._handlesDryRun;
+  }
+
   async run(): Promise<RunResult> {
     const repoRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
 
-    if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
+    if (process.env.__MUNCHKINS_OPT_dryRun === "true" && !this._handlesDryRun) {
       this._printDescribe(repoRoot);
       return { worktreePath: "", branch: "", succeeded: true };
     }
+
+    const prefixResult = resolveBranchPrefix(process.env.__MUNCHKINS_OPT_branchPrefix);
+    if (!prefixResult.ok) {
+      throw new Error(prefixResult.reason);
+    }
+    const branchPrefix = prefixResult.prefix;
 
     const verbose = process.env.__MUNCHKINS_OPT_verbose === "true";
     const logger = new RunLogger(this.name, verbose);
@@ -236,7 +258,7 @@ export class AgentBuilder {
     const sandboxHandle: SandboxHandle | undefined = sandboxResult;
 
     if (sandboxHandle) {
-      const finalBranch = `agent/${slugResult.slug}-${crypto.randomUUID().slice(0, 8)}`;
+      const finalBranch = `${branchPrefix}/${slugResult.slug}-${crypto.randomUUID().slice(0, 8)}`;
       await renameBranch(sandboxHandle.env.BRANCH, finalBranch, repoRoot);
       sandboxHandle.env.BRANCH = finalBranch;
     }
@@ -782,6 +804,24 @@ export class AgentBuilder {
       `deterministic step failed after ${max} iteration(s):\n${lastOutput.slice(-2000)}`,
     );
   }
+}
+
+// Slashes in a prefix would create nested ref paths and break `gh pr list
+// --head` glob matching, so we reject anything outside the slug character set.
+const BRANCH_PREFIX_RE = /^[A-Za-z0-9_-]+$/;
+const DEFAULT_BRANCH_PREFIX = "agent";
+
+export type BranchPrefixResult = { ok: true; prefix: string } | { ok: false; reason: string };
+
+export function resolveBranchPrefix(raw: string | undefined): BranchPrefixResult {
+  if (raw === undefined || raw === "") return { ok: true, prefix: DEFAULT_BRANCH_PREFIX };
+  if (!BRANCH_PREFIX_RE.test(raw)) {
+    return {
+      ok: false,
+      reason: `invalid --branch-prefix: "${raw}". Allowed: alphanumeric characters, dashes, and underscores (no slashes).`,
+    };
+  }
+  return { ok: true, prefix: raw };
 }
 
 function readUserMessage(repoRoot: string): string | undefined {

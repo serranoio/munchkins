@@ -39,8 +39,13 @@ export async function cleanupWorktree(worktreePath: string, repoRoot: string): P
   await $`git worktree remove ${worktreePath} --force`.cwd(repoRoot).quiet();
 }
 
+// Safety guard: only delete branches that carry a single-segment slug prefix
+// (e.g. `agent/...`, `director/...`). Bare names like `main` / `master` /
+// `develop` never match — the slash is required.
+const NAMESPACED_BRANCH_RE = /^[A-Za-z0-9_-]+\/[^/]/;
+
 export async function deleteBranch(branch: string, repoRoot: string): Promise<void> {
-  if (!branch?.startsWith("agent/")) return;
+  if (!branch || !NAMESPACED_BRANCH_RE.test(branch)) return;
   await $`git branch -D ${branch}`.cwd(repoRoot).quiet();
 }
 

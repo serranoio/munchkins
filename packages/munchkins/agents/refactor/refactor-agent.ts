@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
 import {
+  BRANCH_PREFIX_OPTION,
   DEFAULT_CHECKS,
   defaultFixer,
   GUIDELINES_PATH,
@@ -14,6 +15,7 @@ const builder = new AgentBuilder(
   "Refactor a target for DRY violations and clarity.",
   gitWorktreeSandbox(),
 )
+  .option("branchPrefix", BRANCH_PREFIX_OPTION)
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:refactor")

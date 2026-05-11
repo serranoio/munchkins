@@ -4,6 +4,58 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(director): add cron-driven director munchkin + --branch-prefix plumbing (2b62c5d)
+**2026-05-10 21:59 PDT · feat-small · 1219.3s · $14.5252**
+
+**Goal:** Ship Phase 1 of the `director` munchkin — a cron-driven, six-step orchestrator that picks vertical slices and dispatches to `feat-small` / `bug-fix` / `refactor` — and add the `--branch-prefix` flag the dispatch depends on.
+
+**Outcome:** Added a new `director` agent (3 deterministic + 3 agent + 1 post-checks step, armed on `*/10 * * * *`) with its SKILL.md, three role prompts, and three bash scripts under `packages/munchkins/agents/director/`. Threaded a validated `--branch-prefix` option through `AgentBuilder.run()` so the final branch is `${prefix}/${slug}-${uuid}` (default `agent`, regression-safe). Added a `.handlesDryRun()` opt-out so the director's reasoning steps still run under `--dry-run` while `scripts/dispatch.sh` short-circuits dispatch. Wrote `PURPOSE.md` at the repo root, registered the agent + skill symlink, and documented the surface in `docs/pages/agents/director.md` plus the internal pointer.
+
+**How to test manually:**
+
+1. From the repo root: `bun install && bun run build` (so the `.js` side-effect imports resolve).
+2. Confirm the subcommand surface: `bun run munchkins --help` — `director` should appear alongside `bug-fix`, `feat-small`, `refactor`.
+3. Daemon table check: `bun run munchkins daemon` and verify the startup table shows a `director` row with schedule `*/10 * * * *` and verbosity `thinking`. Ctrl-C to stop.
+4. Dry-run happy path: with `PURPOSE.md` present at repo root, run `bun run munchkins director --user-message=/dev/null --dry-run`. Expect steps 1–5 to execute, intermediate artifacts to appear under `.director/<run>/` in the worktree (`inflight.json`, `survey.md`, `triage.json`, `spec.md`, `plan.md`), and step 6 to print `[director] dispatch (dry-run): bun run munchkins <target> --user-message=.director/<run>/plan.md --branch-prefix=director` without invoking the child. Inspect each artifact to confirm it's well-formed.
+5. Missing-PURPOSE fast fail: in a scratch repo without `PURPOSE.md` (`cd /tmp && git init r && cd r && git commit --allow-empty -m seed`), run `bun run --cwd <this-repo> munchkins director --user-message=/dev/null` from inside `/tmp/r`. Expect non-zero exit and stderr `PURPOSE.md not found at repo root. The director requires a written north star. See docs/pages/agents/director.md.`
+6. Branch-prefix happy path: `bun run munchkins feat-small --user-message=./scratch/anything.md --branch-prefix=director --dry-run`. The describe output should preview a `director/<slug>-<uuid>` branch. Re-run without the flag and confirm the branch reverts to `agent/<slug>-<uuid>` (byte-identical to today).
+7. Branch-prefix rejection: `__MUNCHKINS_OPT_branchPrefix=foo/bar bun run munchkins refactor --user-message=./scratch/anything.md`. Expect immediate failure with `invalid --branch-prefix: "foo/bar". Allowed: alphanumeric characters, dashes, and underscores (no slashes).`
+8. Skill symlink: `cat .claude/skills/director/SKILL.md | head -3` resolves to the package source with the `name: director` frontmatter.
+9. Out-of-band check (automated tests do not cover this): run `bun run munchkins daemon` in the background, wait one cron tick, then `ls .director/` in the daemon's worktree to see a real run directory populated end-to-end. Kill the daemon when done.
+
+**Files changed:**
+
+- .claude/skills/director (symlink)
+- .gitignore
+- AGENTS.md
+- PURPOSE.md
+- README.md
+- docs/pages/agents/_meta.json
+- docs/pages/agents/director.md
+- docs/pages/internal/director-design.md
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/builder/agent-builder.test.ts
+- packages/munchkins-core/src/builder/index.ts
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/worktree.ts
+- packages/munchkins-core/src/worktree.test.ts
+- packages/munchkins/agents/_shared/presets.ts
+- packages/munchkins/agents/bugfix/bugfix-agent.ts
+- packages/munchkins/agents/feat-small/feat-small-agent.ts
+- packages/munchkins/agents/refactor/refactor-agent.ts
+- packages/munchkins/agents/director/director-agent.ts
+- packages/munchkins/agents/director/director-agent.test.ts
+- packages/munchkins/agents/director/prompts/triage.md
+- packages/munchkins/agents/director/prompts/spec.md
+- packages/munchkins/agents/director/prompts/plan.md
+- packages/munchkins/agents/director/scripts/inflight-survey.sh
+- packages/munchkins/agents/director/scripts/repo-survey.sh
+- packages/munchkins/agents/director/scripts/dispatch.sh
+- packages/munchkins/skills/director/SKILL.md
+- packages/munchkins/src/index.ts
+- packages/munchkins/package.json
+
+---
 ## refactor(munchkins): namespace default skills under munchkins: (536305f)
 **2026-05-10 20:52 PDT · refactor · 457.0s · $4.4814**
 

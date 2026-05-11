@@ -5,6 +5,7 @@ doc_build/
 .munchkins/
 .scenario-artifacts/
 .worktrees/
+.director/
 scratch/
 .DS_Store
 .env

@@ -78,3 +78,41 @@ describe("createWorktree", () => {
     await expect(createWorktree("bug-fix", "relative/path")).rejects.toThrow(/absolute/);
   });
 });
+
+describe("deleteBranch namespaced safety guard", () => {
+  let repo: Repo;
+
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+
+  afterEach(() => {
+    repo.cleanup();
+  });
+
+  test("deletes a non-'agent/' namespaced branch (e.g. director/foo)", async () => {
+    const branch = "director/foo-deadbeef";
+    await $`git branch ${branch}`.cwd(repo.path).quiet();
+    await deleteBranch(branch, repo.path);
+    const remaining = (await $`git branch --list ${branch}`.cwd(repo.path).quiet()).text().trim();
+    expect(remaining).toBe("");
+  });
+
+  test("refuses to delete a bare branch name like 'main'", async () => {
+    // 'main' exists from createRepo seed; if the guard slips, this would
+    // detach HEAD and corrupt the fixture — so we verify it still exists.
+    await deleteBranch("main", repo.path);
+    const remaining = (await $`git branch --list main`.cwd(repo.path).quiet()).text().trim();
+    expect(remaining).toContain("main");
+  });
+
+  test("empty string is a no-op", async () => {
+    await expect(deleteBranch("", repo.path)).resolves.toBeUndefined();
+  });
+
+  test("refuses a name with trailing slash only (no second segment)", async () => {
+    // Regex requires `[^/]` after the slash; a dangling prefix shouldn't match.
+    // Branch doesn't exist; we just verify deleteBranch doesn't throw (no-op).
+    await expect(deleteBranch("agent/", repo.path)).resolves.toBeUndefined();
+  });
+});
