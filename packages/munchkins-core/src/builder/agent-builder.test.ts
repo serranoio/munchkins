@@ -252,6 +252,31 @@ describe("resolveBranchPrefix", () => {
   });
 });
 
+describe("AgentBuilder.handlesDryRun opt-out", () => {
+  test("fresh builder defaults to handlesDryRun=false", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.getHandlesDryRun()).toBe(false);
+  });
+
+  test("handlesDryRun() with no arg toggles to true (matches director usage)", () => {
+    const builder = new AgentBuilder("a");
+    builder.handlesDryRun();
+    expect(builder.getHandlesDryRun()).toBe(true);
+  });
+
+  test("handlesDryRun(false) explicitly resets to false", () => {
+    const builder = new AgentBuilder("a");
+    builder.handlesDryRun(true);
+    builder.handlesDryRun(false);
+    expect(builder.getHandlesDryRun()).toBe(false);
+  });
+
+  test("handlesDryRun() returns the builder for chaining", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.handlesDryRun()).toBe(builder);
+  });
+});
+
 describe("AgentBuilder.run integration dispatch end-to-end", () => {
   let repo: Repo;
   const originalCwd = process.cwd();
