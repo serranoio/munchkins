@@ -13,12 +13,10 @@ const builder = new AgentBuilder(
   gitWorktreeSandbox(),
 )
   .add(
-    new Prompt(GUIDELINES_PATH)
-      .withSkill("bug-fix")
-      .withUserMessageFromOption("userMessage", {
-        required: true,
-        description: "Path to a markdown file describing the bug",
-      }),
+    new Prompt(GUIDELINES_PATH).withSkill("bug-fix").withUserMessageFromOption("userMessage", {
+      required: true,
+      description: "Path to a markdown file describing the bug",
+    }),
   )
   .add(
     new Prompt(GUIDELINES_PATH)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { mock } from "bun:test";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -219,6 +220,14 @@ async function run(): Promise<ScenarioResult> {
     const sandbox = await createSandbox(seedRepoDir);
     sandboxPath = sandbox.path;
     cleanup = sandbox.cleanup;
+
+    // Install the bug-fix skill into the sandbox so the agent's
+    // `.withSkill("bug-fix")` resolves against the sandboxed repo root,
+    // mirroring what `bun run munchkins install-skills` would do for a user.
+    const skillSrc = join(repoRoot, "packages", "munchkins", "skills", "bug-fix", "SKILL.md");
+    const skillDestDir = join(sandbox.path, ".claude", "skills", "bug-fix");
+    mkdirSync(skillDestDir, { recursive: true });
+    copyFileSync(skillSrc, join(skillDestDir, "SKILL.md"));
 
     const userMessagePath = join(sandbox.path, "bug.md");
     process.env.__MUNCHKINS_OPT_userMessage = userMessagePath;

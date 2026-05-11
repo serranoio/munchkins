@@ -17,12 +17,10 @@ const builder = new AgentBuilder(
   gitWorktreeSandbox(),
 )
   .add(
-    new Prompt(GUIDELINES_PATH)
-      .withSkill("feat-small")
-      .withUserMessageFromOption("userMessage", {
-        required: true,
-        description: "Path to a markdown file (or inline text) describing the feature",
-      }),
+    new Prompt(GUIDELINES_PATH).withSkill("feat-small").withUserMessageFromOption("userMessage", {
+      required: true,
+      description: "Path to a markdown file (or inline text) describing the feature",
+    }),
   )
   .add(
     new Prompt(GUIDELINES_PATH)
