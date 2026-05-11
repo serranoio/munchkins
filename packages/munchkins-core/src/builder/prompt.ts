@@ -56,13 +56,15 @@ export class Prompt {
     const systemPrompt = this.systemSources
       .map((src) => {
         const absPath = abs(src.path);
-        if (src.kind === "skill" && !existsSync(absPath)) {
-          throw new Error(
-            `Skill '${src.name}' not found at ${src.path}. Run 'bun run munchkins install-skills' to scaffold default skills.`,
-          );
+        if (src.kind === "skill") {
+          if (!existsSync(absPath)) {
+            throw new Error(
+              `Skill '${src.name}' not found at ${src.path}. Run 'bun run munchkins install-skills' to scaffold default skills.`,
+            );
+          }
+          return stripFrontmatter(readFileSync(absPath, "utf-8"), absPath);
         }
-        const content = readFileSync(absPath, "utf-8");
-        return src.kind === "skill" ? stripFrontmatter(content, absPath) : content;
+        return readFileSync(absPath, "utf-8");
       })
       .join("\n\n");
     const userPrompt = this._fragments
