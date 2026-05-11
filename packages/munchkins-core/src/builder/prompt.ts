@@ -13,16 +13,27 @@ export type Fragment =
 
 const OPTION_ENV_PREFIX = "__MUNCHKINS_OPT_";
 
+type SystemSource = { kind: "path"; path: string } | { kind: "skill"; name: string; path: string };
+
 export class Prompt {
-  private systemPaths: string[] = [];
+  private systemSources: SystemSource[] = [];
   private _fragments: Fragment[] = [];
 
   constructor(systemPath?: string) {
-    if (systemPath !== undefined) this.systemPaths.push(systemPath);
+    if (systemPath !== undefined) this.systemSources.push({ kind: "path", path: systemPath });
   }
 
   withSystem(path: string): this {
-    this.systemPaths.push(path);
+    this.systemSources.push({ kind: "path", path });
+    return this;
+  }
+
+  withSkill(name: string): this {
+    this.systemSources.push({
+      kind: "skill",
+      name,
+      path: `.claude/skills/${name}/SKILL.md`,
+    });
     return this;
   }
 
@@ -42,7 +53,18 @@ export class Prompt {
 
   resolve(repoRoot: string): { systemPrompt: string; userPrompt: string } {
     const abs = (p: string) => (isAbsolute(p) ? p : join(repoRoot, p));
-    const systemPrompt = this.systemPaths.map((p) => readFileSync(abs(p), "utf-8")).join("\n\n");
+    const systemPrompt = this.systemSources
+      .map((src) => {
+        const absPath = abs(src.path);
+        if (src.kind === "skill" && !existsSync(absPath)) {
+          throw new Error(
+            `Skill '${src.name}' not found at ${src.path}. Run 'bun run munchkins install-skills' to scaffold default skills.`,
+          );
+        }
+        const content = readFileSync(absPath, "utf-8");
+        return src.kind === "skill" ? stripFrontmatter(content, absPath) : content;
+      })
+      .join("\n\n");
     const userPrompt = this._fragments
       .map((f) => {
         if (f.kind === "text") return f.text;
@@ -61,6 +83,21 @@ export class Prompt {
       .join("\n\n");
     return { systemPrompt, userPrompt };
   }
+}
+
+function stripFrontmatter(content: string, absPath: string): string {
+  const opener = /^---\r?\n/.exec(content);
+  if (!opener) return content;
+  const afterOpen = opener[0].length;
+  const closer = /\r?\n---(\r?\n|$)/.exec(content.slice(afterOpen));
+  if (!closer) {
+    throw new Error(`Skill at ${absPath}: malformed frontmatter (no closing '---' delimiter)`);
+  }
+  let bodyStart = afterOpen + closer.index + closer[0].length;
+  // Strip a single trailing blank line after the closing '---'.
+  const trailing = /^\r?\n/.exec(content.slice(bodyStart));
+  if (trailing) bodyStart += trailing[0].length;
+  return content.slice(bodyStart);
 }
 
 export { OPTION_ENV_PREFIX };
