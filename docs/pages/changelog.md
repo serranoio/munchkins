@@ -4,6 +4,35 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(munchkins-core): add Prompt.withSkill() helper (07441da)
+**2026-05-10 19:34 PDT · feat-small · 385.0s · $2.3356**
+
+**Goal:** Add a `Prompt.withSkill(name)` helper that reads `<repoRoot>/.claude/skills/<name>/SKILL.md`, strips YAML frontmatter, and contributes the body to the system prompt — same slot as `withSystem(path)`.
+
+**Outcome:** Refactored `Prompt`'s internal `systemPaths: string[]` into a tagged `systemSources` array supporting both `path` and `skill` source kinds. `withSystem(path)` semantics are unchanged; the new `withSkill(name)` queues a skill source that resolves to `.claude/skills/<name>/SKILL.md` at `resolve()` time, with a textual frontmatter strip (including one trailing blank line). Missing-skill and malformed-frontmatter errors carry actionable messages pointing at `bun run munchkins install-skills` and the offending path. Eight test cases in the new `prompt.test.ts` cover stripping, chaining, errors, composition with `withSystem`, and preservation of pre-change `withSystem` behavior.
+
+**How to test manually:**
+
+1. From the repo root, run the new test file directly: `bun test packages/munchkins-core/src/builder/prompt.test.ts` — expect all 8 cases to pass.
+2. Run the broader gate: `bun run lint && bun run typecheck && bun run test` — expect green; existing tests must still pass since `withSystem(path)` behavior is preserved.
+3. Verify the skill happy path against a real on-disk file. Create a fixture and a one-liner script:
+   ```
+   mkdir -p /tmp/wskill-demo/.claude/skills/demo
+   printf -- '---\nname: demo\ndescription: x\n---\n\n# Demo body\n' > /tmp/wskill-demo/.claude/skills/demo/SKILL.md
+   bun -e 'import {Prompt} from "./packages/munchkins-core/src/builder/prompt.ts"; console.log(JSON.stringify(new Prompt().withSkill("demo").resolve("/tmp/wskill-demo")))'
+   ```
+   Expected: `systemPrompt` equals `"# Demo body\n"` (no frontmatter, no leading blank line).
+4. Edge: missing skill. Run the same one-liner but with `withSkill("missing")` — expect a thrown error whose message contains `Skill 'missing' not found` and `install-skills`.
+5. Edge: malformed frontmatter. Overwrite the file with `printf -- '---\nname: demo\nno close here' > /tmp/wskill-demo/.claude/skills/demo/SKILL.md` and re-run the one-liner — expect an error containing `malformed frontmatter (no closing '---' delimiter)` and the absolute path to the file.
+6. Edge: composition order. Create `/tmp/wskill-demo/a.md` (`AAA`) and `/tmp/wskill-demo/b.md` (`BBB`), then chain `new Prompt().withSystem("/tmp/wskill-demo/a.md").withSkill("demo").withSystem("/tmp/wskill-demo/b.md").resolve("/tmp/wskill-demo")` — expect `systemPrompt` to be `AAA\n\n# Demo body\n\n\nBBB` (sources joined with `\n\n` in call order).
+7. Sanity: confirm existing agents still work without changes — `bun run scenario` should pass, exercising `withSystem(path)` callers in `bugfix-agent.ts`, `refactor-agent.ts`, `feat-small-agent.ts`, and `bugfix-then-refactor-agent.ts`.
+
+**Files changed:**
+
+- packages/munchkins-core/src/builder/prompt.ts
+- packages/munchkins-core/src/builder/prompt.test.ts
+
+---
 ## feat(munchkins): add SKILL.md discovery surface for default agents (bd12fe3)
 **2026-05-10 19:20 PDT · feat-small · 265.9s · $2.0450**
 
