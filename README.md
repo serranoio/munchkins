@@ -1,6 +1,14 @@
 # munchkins
 
-**Prompt → review.** Spawn a coding agent against your repo. It runs in a fresh worktree, gates itself with `lint` + `typecheck` + `scenario`, and hands you back a reviewable diff. Same agent runs from your terminal or from CI — same gate, same merge contract. Munchkins are *project-specific deterministic skills*: they live in your `.claude/skills/`, get committed to git, and customizations survive package upgrades.
+**Project-specific, OPINIONATED, deterministic skills.**
+
+Prompt → review.
+Prompt → production.
+Configurable your way.
+
+OPINIONATED because every agent's output is gated by your repo's standards before it lands — no exceptions. Configurable because *your* standards are whatever your repo declares: your lint config, your typecheck rules, your scenario harness, your branch protection, your integration target. munchkins enforces; you define what gets enforced.
+
+Spawn a coding agent against your repo. It runs in a fresh worktree, runs your gate (`lint` + `typecheck` + `scenario`), and either opens a reviewable PR (`--integrate=pr`) or merges straight into a deployable branch (`--integrate=merge`, the default) — your call per run. Same agent runs from your terminal or from CI. Skills live in your `.claude/skills/`, get committed to git, and your edits survive package upgrades.
 
 ```
 prompt ──┬── local CLI:  bun run munchkins <agent>
