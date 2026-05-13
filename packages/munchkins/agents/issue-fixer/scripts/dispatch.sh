@@ -27,19 +27,19 @@ DRY_RUN="${__MUNCHKINS_OPT_dryRun:-}"
 
 # Parse dispatch.json once via Bun and emit a shell-eval'able snippet.
 eval "$(bun -e '
-  const fs = require("node:fs");
-  const d = JSON.parse(fs.readFileSync(process.argv[1], "utf-8"));
+  const d = await Bun.file(process.argv[1]).json();
   const esc = (v) => `'"'"'${String(v).replace(/'"'"'/g, "'"'"'\\'"'"''"'"'")}'"'"'`;
+  const emit = (k, v) => process.stdout.write(`${k}=${esc(v ?? "")}\n`);
   if (d.idle) {
     process.stdout.write(`IDLE=1\n`);
-    process.stdout.write(`REASON=${esc(d.reason ?? "")}\n`);
-    process.stdout.write(`COMMENT_ON=${esc(d.comment_on ?? "")}\n`);
-    process.stdout.write(`COMMENT_BODY=${esc(d.comment_body ?? "")}\n`);
+    emit("REASON", d.reason);
+    emit("COMMENT_ON", d.comment_on);
+    emit("COMMENT_BODY", d.comment_body);
   } else {
     process.stdout.write(`IDLE=0\n`);
-    process.stdout.write(`ISSUE_NUMBER=${esc(d.issue_number ?? "")}\n`);
-    process.stdout.write(`WORK_TYPE=${esc(d.work_type ?? "")}\n`);
-    process.stdout.write(`BRANCH_SLUG=${esc(d.branch_slug ?? "")}\n`);
+    emit("ISSUE_NUMBER", d.issue_number);
+    emit("WORK_TYPE", d.work_type);
+    emit("BRANCH_SLUG", d.branch_slug);
   }
 ' "$DISPATCH")"
 

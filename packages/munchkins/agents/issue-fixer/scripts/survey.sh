@@ -32,13 +32,10 @@ fi
 # Filter + render via Bun so we don't ship a shell JSON parser. Drops issues
 # whose label list contains `bot:in-progress` or `bot:fix-failed`.
 bun -e '
-  const fs = require("node:fs");
   const issues = JSON.parse(process.argv[1]);
   const skip = new Set(["bot:in-progress", "bot:fix-failed"]);
-  const eligible = issues.filter((i) => {
-    const labels = (i.labels ?? []).map((l) => l.name ?? l);
-    return !labels.some((l) => skip.has(l));
-  });
+  const labelNames = (i) => (i.labels ?? []).map((l) => l.name ?? l);
+  const eligible = issues.filter((i) => !labelNames(i).some((l) => skip.has(l)));
   const lines = [];
   lines.push(`# Issue-fixer survey — ${new Date().toISOString()}`);
   lines.push("");
@@ -48,11 +45,10 @@ bun -e '
     lines.push("(no open issues carry `bot:fix-me` without a blocking label)");
   } else {
     for (const i of eligible) {
-      const labels = (i.labels ?? []).map((l) => l.name ?? l).join(", ");
       lines.push(`## #${i.number} — ${i.title}`);
       lines.push("");
       lines.push(`- URL: ${i.url}`);
-      lines.push(`- Labels: ${labels}`);
+      lines.push(`- Labels: ${labelNames(i).join(", ")}`);
       lines.push("");
       lines.push("### Body");
       lines.push("");
@@ -62,7 +58,7 @@ bun -e '
       lines.push("");
     }
   }
-  fs.writeFileSync(process.argv[2], lines.join("\n"));
+  await Bun.write(process.argv[2], lines.join("\n"));
 ' "$issues_json" "$OUT"
 
 echo "[issue-fixer] survey wrote $OUT (run-id=$RUN_ID)"
