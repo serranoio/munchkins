@@ -4,6 +4,25 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(issue-fixer): add cron-driven GitHub-issue triager + fixer munchkin
+
+**Goal:** Ship `issue-fixer` — a cron-driven munchkin that scans open GitHub issues labeled `bot:fix-me`, classifies each as `bug-fix` / `refactor` / `feature`, and dispatches the matching child munchkin with `--integrate=pr` so the result lands as a reviewable PR that auto-closes the issue.
+
+**Outcome:** New `issue-fixer` agent (1 survey deterministic step + 1 triage agent step + 1 dispatch deterministic step) armed on `*/15 * * * *` with `.handlesDryRun()`. Skill at `packages/munchkins/skills/munchkins-issue-fixer/SKILL.md` (symlinked into `.claude/skills/`). Triage prompt at `packages/munchkins/agents/issue-fixer/prompts/triage.md`. Shell scripts at `packages/munchkins/agents/issue-fixer/scripts/{survey.sh,dispatch.sh}`. New GitHub Actions workflow `.github/workflows/issue-fixer.yml` runs the same agent on a 15-minute schedule with `contents/issues/pull-requests: write` permissions. Side-effect import added to `packages/munchkins/src/index.ts`. Bumped `@serranolabs.io/munchkins` to `0.1.4`.
+
+**Labels used:** `bot:fix-me` (operator opt-in), `bot:in-progress` (soft lock added at dispatch, removed at terminal outcome), `bot:fixed` (success), `bot:fix-failed` (failure — operator clears to re-arm).
+
+**How to test manually:**
+
+1. `bun install && bun run build`.
+2. `bun run munchkins --help` — confirm `issue-fixer` appears alongside the other agents.
+3. With no issues labeled `bot:fix-me`: `bun run munchkins issue-fixer --dry-run`. Expect survey + triage steps to write `.issue-fixer/<run>/{issues.md,dispatch.json}` and dispatch to log `idle — no eligible issues`. No labels mutated.
+4. Label one open issue with `bot:fix-me`. Re-run `bun run munchkins issue-fixer --dry-run`. Expect dispatch to log `dispatch (dry-run): issue #<N> → <target>: bun run munchkins <target> --user-message=... --branch-prefix=issue-<N> --integrate=pr`. No labels mutated.
+5. Drop `--dry-run` for a real run against a test issue and confirm `bot:in-progress` is added, the child munchkin runs, and on success the PR body includes `Closes #<N>`.
+6. From the Actions tab, run `issue-fixer` via `workflow_dispatch` — same behavior, authored by `github-actions[bot]`.
+
+---
+
 ## feat(director): add cron-driven director munchkin + --branch-prefix plumbing (2b62c5d)
 **2026-05-10 21:59 PDT · feat-small · 1219.3s · $14.5252**
 

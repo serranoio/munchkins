@@ -70,6 +70,7 @@ One file, two surfaces. Edit `.claude/skills/munchkins-bug-fix/SKILL.md` and bot
 | `bug-fix` | Roots out the cause, applies the minimal fix, then refactors what it touched. |
 | `feat-small` | Adds a small, scoped feature end-to-end with refactor + test passes. |
 | `refactor` | Behavior-preserving cleanup: DRY, naming, decomposition, clarity. |
+| `issue-fixer` | Cron-driven: scans `bot:fix-me`-labeled GitHub issues, picks one, dispatches the matching child munchkin to land a PR that `Closes #N`. |
 
 ## Backends
 

@@ -3,6 +3,7 @@ export * from "@serranolabs.io/munchkins-core";
 import "../agents/bugfix/bugfix-agent.js";
 import "../agents/director/director-agent.js";
 import "../agents/feat-small/feat-small-agent.js";
+import "../agents/issue-fixer/issue-fixer-agent.js";
 import "../agents/refactor/refactor-agent.js";
 import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
 
