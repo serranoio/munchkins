@@ -4,6 +4,49 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(issue-fixer): add cron-driven GitHub-issue triager + fixer munchkin (e1e88e6)
+**2026-05-12 18:13 PDT · feat-small · 826.0s · $7.2646**
+
+**Goal:** Ship a cron-driven `issue-fixer` munchkin that scans open GitHub issues labeled `bot:fix-me`, classifies each as `bug-fix` / `refactor` / `feature`, and dispatches the matching child munchkin with `--integrate=pr` so the result lands as a reviewable PR that auto-closes the issue.
+
+**Outcome:** New `issue-fixer` agent composed of 3 steps (deterministic survey → LLM triage → deterministic dispatch), armed on `*/15 * * * *` via `.cron()` with `.handlesDryRun()`. Skill at `packages/munchkins/skills/munchkins-issue-fixer/SKILL.md` is symlinked into `.claude/skills/`. Triage prompt and shell scripts live under `packages/munchkins/agents/issue-fixer/`. A new GitHub Actions workflow `.github/workflows/issue-fixer.yml` runs the same agent on the same schedule with `contents/issues/pull-requests: write` permissions and a `concurrency: issue-fixer` group. Side-effect import added to `packages/munchkins/src/index.ts`; `@serranolabs.io/munchkins` bumped to `0.1.4`. Scenarios harness now strips inherited `__MUNCHKINS_OPT_*` env vars so nested munchkin runs don't inherit integration/branch-prefix from a parent.
+
+**Labels used:** `bot:fix-me` (operator opt-in), `bot:in-progress` (soft lock added at dispatch, removed at terminal outcome), `bot:fixed` (success), `bot:fix-failed` (failure — operator clears to re-arm).
+
+**How to test manually:**
+
+1. From the repo root: `bun install && bun run build`.
+2. Confirm CLI registration: `bun run munchkins --help` — `issue-fixer` should appear in the agent list alongside `bug-fix`, `feat-small`, `refactor`, and `director`.
+3. Confirm help surface: `bun run munchkins issue-fixer --help` — `--dry-run`, `--integrate`, `--user-message`, and `--cli` should all be documented (they come from the framework).
+4. With **no** issues labeled `bot:fix-me`, run `bun run munchkins issue-fixer --dry-run`. Expect:
+   - Survey step writes `.issue-fixer/<run>/issues.md` showing `Eligible issues: 0`.
+   - Triage writes `dispatch.json` with `{ "idle": true, ... }`.
+   - Dispatch logs `[issue-fixer] dispatch: idle — no eligible issues` and exits 0.
+   - `gh issue list --label bot:in-progress` shows no new labels.
+5. Label one open issue (e.g. #3) with `bot:fix-me`: `gh issue edit 3 --add-label bot:fix-me`. Re-run `bun run munchkins issue-fixer --dry-run`. Expect dispatch to log a line of the form `[issue-fixer] dispatch (dry-run): issue #3 → bug-fix: bun run munchkins bug-fix --user-message=.issue-fixer/<run>/payload.md --branch-prefix=issue-3 --integrate=pr`. Inspect `payload.md` and confirm it ends with `Closes #3`. No labels mutated.
+6. Concurrency-guard edge case: add `bot:in-progress` to the same issue (`gh issue edit 3 --add-label bot:in-progress`) and re-run `bun run munchkins issue-fixer --dry-run`. Expect survey's `issues.md` to drop #3 and dispatch to idle.
+7. Real run: drop `--dry-run` against a low-risk test issue. Confirm during the run that `bot:in-progress` is added; on success, a PR is opened whose body includes `Closes #<N>`, `bot:in-progress` is removed, and `bot:fixed` is added.
+8. CI wiring: from the repo's **Actions** tab, run `issue-fixer` via `workflow_dispatch`. Same expectations as steps 4–7 depending on issue state; any PR is authored by `github-actions[bot]`.
+9. Sanity-check the new test: `bun test packages/munchkins/agents/issue-fixer/issue-fixer-agent.test.ts` — verifies registry registration, cron config, step count (3), `.handlesDryRun()`, and that the symlinked skill resolves.
+
+**Files changed:**
+
+- .claude/skills/munchkins-issue-fixer (symlink)
+- .github/workflows/issue-fixer.yml
+- AGENTS.md
+- CHANGELOG.md
+- README.md
+- packages/munchkins/agents/issue-fixer/issue-fixer-agent.ts
+- packages/munchkins/agents/issue-fixer/issue-fixer-agent.test.ts
+- packages/munchkins/agents/issue-fixer/prompts/triage.md
+- packages/munchkins/agents/issue-fixer/scripts/survey.sh
+- packages/munchkins/agents/issue-fixer/scripts/dispatch.sh
+- packages/munchkins/skills/munchkins-issue-fixer/SKILL.md
+- packages/munchkins/src/index.ts
+- packages/munchkins/package.json
+- scenarios/index.ts
+
+---
 ## feat(issue-fixer): add cron-driven GitHub-issue triager + fixer munchkin
 
 **Goal:** Ship `issue-fixer` — a cron-driven munchkin that scans open GitHub issues labeled `bot:fix-me`, classifies each as `bug-fix` / `refactor` / `feature`, and dispatches the matching child munchkin with `--integrate=pr` so the result lands as a reviewable PR that auto-closes the issue.
