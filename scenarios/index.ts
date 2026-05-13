@@ -33,6 +33,18 @@ const HARNESS_TS = Date.now();
 
 const PRESERVE = process.argv.includes("--preserve");
 
+// Isolate from any inherited `__MUNCHKINS_OPT_*` env vars. When this harness
+// runs inside a parent munchkin's deterministic checks (e.g. feat-small invoked
+// with `--integrate=pr --branch-prefix=feat`), those env vars would otherwise
+// flow into the inner bug-fix agent and silently switch its integration
+// strategy and branch namespace — breaking the scenario's cleanup assertions
+// which expect the default merge integration and `agent/*` branches.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("__MUNCHKINS_OPT_")) {
+    delete process.env[key];
+  }
+}
+
 const harnessDir = new URL(".", import.meta.url).pathname;
 // munchkins repo root is one level above the scenarios/ directory.
 const repoRoot = join(harnessDir, "..");
