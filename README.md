@@ -35,23 +35,17 @@ prompt ──┬── local CLI:  bun run munchkins <agent>
         human review
 ```
 
-## Onboarding (4 steps)
+## Onboarding
 
 ```sh
-# 1. install the package — framework + default agents + skill templates
-bun add -D @serranolabs.io/munchkins
+# 1. set up
+bun add -D @serranolabs.io/munchkins && bun run munchkins skills install
 
-# 2. scaffold the default skills into your repo
-bun run munchkins skills install
-
-# 3. commit them — they're your project's agent surface now
-git add .claude/skills/ && git commit -m "chore: scaffold munchkin skills"
-
-# 4. use it
+# 2. use it
 bun run munchkins bug-fix --user-message="add() in src/math.ts returns a-b instead of a+b"
 ```
 
-After step 2, Claude Code in your repo also discovers the same workflows as namespaced skills:
+After setup, Claude Code in your repo also discovers the same workflows as namespaced skills:
 
 ```
 /munchkins:bug-fix
@@ -129,6 +123,11 @@ Project-local skills go at `.claude/skills/<namespace>-<slug>/SKILL.md` with fro
 - Bun ≥ 1.3.0 (this repo is Bun-only — no `npm`/`pnpm`).
 - `claude` and/or `codex` CLI on `PATH`, authenticated.
 - Optional: `gh` (GitHub) or `glab` (GitLab) for `--integrate=pr`.
+
+## Repo conventions
+
+See [`AGENTS.md`](./AGENTS.md) for the full operating contract: hard rules, command registry, workspace layout, and the manual GitHub setup needed for branch protection and publishing.
+(GitHub) or `glab` (GitLab) for `--integrate=pr`.
 
 ## Repo conventions
 
