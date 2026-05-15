@@ -4,6 +4,48 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(registry): self-register daemon/resume/status/skills as commander commands (215a7de)
+**2026-05-14 17:17 PDT · refactor · 398.6s · $2.3238**
+
+**Goal:** Stop the hardcoded `if/else` dispatch for `daemon`, `resume`, `status`, and `skills install` in `packages/munchkins/src/index.ts` and let the registry expose every system command in `munchkins --help` alongside the agents.
+
+**Outcome:** Added `AgentRegistry.registerCommand({ name, description, configure })` plus a parallel `commands` map; `cli()` now appends a commander subcommand per registered command without leaking agent-only flags (`--dry-run`, `--thinking`, `--verbose`, `--cli`, `--integrate`) onto them. Each core subsystem ships a dedicated `command.ts` (`packages/munchkins-core/src/{resume,status,scheduler}/command.ts`) that wraps the existing `runResume` / `runStatus` / `runDaemon` in a commander `action`, and the CLI package adds `packages/munchkins/src/register-skills-command.ts` for the `skills install` subcommand (kept in-package because it depends on `PACKAGE_ROOT`). All four are wired at module-load: core's `index.ts` calls the three `register*Command(registry)` helpers as a side effect, so any consumer of `@serranolabs.io/munchkins-core` gets them for free, and the CLI's `index.ts` calls `registerSkillsCommand(registry)` once at the top before `registry.cli().parseAsync(argv)`. The cmux delegation block and `--no-cmux` argv filter are preserved verbatim.
+
+**Refactor type:** extraction
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins-core/src/index.ts | 79 | 88 | +9 |
+| packages/munchkins-core/src/registry/index.ts | 1 | 1 | 0 |
+| packages/munchkins-core/src/registry/registry.test.ts | 144 | 210 | +66 |
+| packages/munchkins-core/src/registry/registry.ts | 100 | 118 | +18 |
+| packages/munchkins-core/src/resume/command.ts | 0 | 22 | +22 |
+| packages/munchkins-core/src/scheduler/command.ts | 0 | 14 | +14 |
+| packages/munchkins-core/src/status/command.ts | 0 | 16 | +16 |
+| packages/munchkins/src/index.ts | 42 | 29 | −13 |
+| packages/munchkins/src/register-skills-command.ts | 0 | 19 | +19 |
+
+**Total:** 366 → 517 (Δ +151)
+
+The net line growth reflects four new dedicated command modules + extended test coverage. The extracted abstraction is `AgentRegistry.registerCommand()`: system commands now share one registration mechanism instead of four hand-rolled `if/else` branches in the CLI entrypoint, and the agent flag block stays scoped to `AgentBuilder` subcommands only.
+
+**Files changed:**
+- packages/munchkins-core/src/index.ts
+- packages/munchkins-core/src/registry/index.ts
+- packages/munchkins-core/src/registry/registry.test.ts
+- packages/munchkins-core/src/registry/registry.ts
+- packages/munchkins-core/src/resume/command.ts
+- packages/munchkins-core/src/scheduler/command.ts
+- packages/munchkins-core/src/status/command.ts
+- packages/munchkins/src/index.ts
+- packages/munchkins/src/register-skills-command.ts
+
+**Recovery note:** The originating refactor agent run (`.munchkins/runs/self-register-system-commands-2c7cdac2`) hit a Claude usage cap immediately after producing the diff — its agent step exited 1 with the rate-limit string as its response, so the deterministic loop skipped the summary writer phase even though the integration commit had already landed via tool-call. This entry was hand-written from the diff to close out the run.
+
+---
+
 ## feat(munchkins): launch agent runs inside cmux workspace when available (86ddc5a)
 **2026-05-10 19:35 PDT · feat-small · 604.6s · $4.0926**
 
