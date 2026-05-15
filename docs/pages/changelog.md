@@ -4,6 +4,59 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(core): preserve worktree on agent failure for resume (0c1d9cc)
+**2026-05-14 18:11 PDT · feat-small · 1231.9s · $12.2061**
+
+**Goal:** When a Claude subprocess exits non-zero mid-run, preserve the worktree on disk and surface the run via `munchkins resume --list` so the operator can recover with `bun run munchkins resume <runId>`.
+
+**Outcome:** Replaced the `failed` phase with `interrupted` in `RunPhase`, gated sandbox teardown so it only runs on success, and persisted `phase: "interrupted"` eagerly at every spawnClaude-bearing failure site. `listResumableRuns` no longer filters `failed` (forward-compat for legacy state files) and now surfaces interrupted runs. A new end-to-end scenario `resume-after-claude-exit-e2e` drives the bug-fix agent through a phase-1 in-process failure at step 2, then resumes via a fake-claude shim subprocess and asserts all 17 acceptance invariants.
+
+**How to test manually:**
+
+1. From the repo root, run the new scenario in isolation:
+   ```
+   bun run scenarios/resume-after-claude-exit-e2e.ts
+   ```
+   Expect `result: pass` and exit code 0. The harness internally exercises phase 1 (in-process mock fails at step 2 with the "usage cap" fixture) and phase 2 (subprocess `bun .../munchkins resume <runId>` driven by the fake-claude shim on PATH).
+2. Run the full scenario gate to confirm the existing scenarios still pass alongside the new one:
+   ```
+   bun run scenario
+   ```
+   Expect all three scenarios (`scenarios/index.ts`, `scenarios/composition.ts`, `scenarios/resume-after-claude-exit-e2e.ts`) to pass.
+3. Run the unit suite to confirm `run-state` filter changes and forward-compat are covered:
+   ```
+   bun test packages/munchkins-core/src/resume/run-state.test.ts
+   ```
+   Expect green; the new cases assert `interrupted` is included, `done` is excluded, and legacy `failed` state files are surfaced rather than purged.
+4. Out-of-band manual check (failure-preservation invariant): preserve a failing run's artifacts and inspect them by hand:
+   ```
+   bun run scenarios/resume-after-claude-exit-e2e.ts --preserve
+   ls .scenario-artifacts/resume-after-claude-exit-e2e-*/
+   cat .scenario-artifacts/resume-after-claude-exit-e2e-*/*/state.json
+   ```
+   On a pass run, you'll see `result.json` in the artifact dir; on a failure run, inspect `state.json` to confirm `phase: "interrupted"`, `failureReason` set, and the step statuses (`completed`, `in-progress`). This also confirms the audit guard (no real `claude` spawns were attempted — the harness records `claudeAttempts` and fails if any are seen).
+5. Edge case — legacy state file forward-compat: write a state.json containing `"phase": "failed"` into a fresh run-log dir under `MUNCHKINS_RUN_LOG_DIR`, then run `bun run munchkins resume --list` and confirm the legacy run appears (operators don't lose recovery options across the rename).
+
+**Files changed:**
+
+- package.json
+- packages/munchkins-core/src/builder/agent-builder.ts
+- packages/munchkins-core/src/resume/run-state.ts
+- packages/munchkins-core/src/resume/run-state.test.ts
+- scenarios/lib/fake-claude-bin/claude
+- scenarios/lib/mock-spawn-claude.ts
+- scenarios/fixtures/resume-after-claude-exit-e2e/seed-repo/bug.md
+- scenarios/fixtures/resume-after-claude-exit-e2e/seed-repo/package.json
+- scenarios/fixtures/resume-after-claude-exit-e2e/seed-repo/src/math.ts
+- scenarios/fixtures/resume-after-claude-exit-e2e/mock-claude-responses-phase1/01-bug-fix-success.json
+- scenarios/fixtures/resume-after-claude-exit-e2e/mock-claude-responses-phase1/02-refactorer-usage-cap.json
+- scenarios/fixtures/resume-after-claude-exit-e2e/mock-claude-responses-phase2/01-refactorer-retry.json
+- scenarios/fixtures/resume-after-claude-exit-e2e/mock-claude-responses-phase2/02-summary-writer.json
+- scenarios/fixtures/resume-after-claude-exit-e2e/mock-claude-responses-phase2/03-integration-fixer.json
+- scenarios/resume-after-claude-exit-e2e.ts
+
+---
+
 ## refactor(registry): self-register daemon/resume/status/skills as commander commands (215a7de)
 **2026-05-14 17:17 PDT · refactor · 398.6s · $2.3238**
 
