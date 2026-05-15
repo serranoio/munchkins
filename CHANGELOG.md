@@ -4,6 +4,46 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## test(scenarios): add director multi-dispatch e2e + cron callback coverage (a9d43a2)
+**2026-05-15 07:57 PDT · feat-small · 1771.6s · $16.0794**
+
+**Goal:** prove the cron → director → multi-child-dispatch chain works end-to-end inside the scenario harness, and close unit-test gaps in director scripts plus the cron daemon callback path.
+
+**Outcome:** added a new `director-multi-dispatch-e2e` harness scenario that drives two ticks through the cron daemon and asserts the director routes to two distinct child agents (bug-fix then refactor) via a fake-bun shim that intercepts `bun run munchkins <child>` calls from `dispatch.sh`. Extended `mock-spawn-claude.ts` with tick-aware fixture buckets and a child-dispatch log reader. Added unit tests covering `repo-survey.sh` happy path, inflight detection of `director/*` branches, `dispatch.sh` argv construction across work_types (plus the idle short-circuit), and one new daemon test that exercises the armed timer callback path. Wired the new scenario into `bun run scenario`.
+
+**How to test manually:**
+
+1. From the repo root, run the new scenario in isolation: `bun run scenarios/director-multi-dispatch-e2e.ts`. Expect exit 0 with stdout JSON containing `"scenarioId": "director-multi-dispatch-e2e"` and `"result": "pass"`. On pass, the artifact dir under `.scenario-artifacts/director-multi-dispatch-e2e-*` is cleaned up automatically.
+2. Run the director script unit tests directly: `bun test packages/munchkins/agents/director/director-agent.test.ts`. All tests should pass, including the new `repo-survey.sh happy path…`, `inflight-survey.sh detects existing director/* branches…`, `dispatch.sh constructs the correct child argv…`, and `dispatch.sh short-circuits when triage.json reports idle` cases.
+3. Run the daemon test file: `bun test packages/munchkins-core/src/scheduler/daemon.test.ts`. The new test `invoking the armed timer's callback fires builder.run() exactly once and re-arms the next tick` should pass alongside the existing 14.
+4. Confirm the older scenarios still pass after the tick-bucket refactor of `mock-spawn-claude.ts`: `bun run scenarios/index.ts && bun run scenarios/composition.ts && bun run scenarios/resume-after-claude-exit-e2e.ts`. Each should exit 0.
+5. Run the full chain: `bun run scenario`. Expect all four scenarios PASS sequentially and the command to exit 0.
+6. Failure-preservation smoke test: temporarily change `scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-2/02-spec.json` `exitCode` from `0` to `1`. Rerun `bun run scenarios/director-multi-dispatch-e2e.ts`. Expect exit code 1, `"result": "fail"`, `failure.phase` set, and the artifact path printed to stderr (the dir should NOT be cleaned up). Revert the edit afterward.
+7. Inspect the JSON output of the passing run for `mockCallLog` — entries should be tagged with `bucket: "tick-1"` for the first half and `bucket: "tick-2"` for the second half, confirming the tick-aware fixture seam fired correctly across both ticks.
+8. Lint + typecheck: `bun run lint && bun run typecheck`. Both should exit 0.
+
+**Files changed:**
+
+- package.json
+- packages/munchkins-core/src/scheduler/daemon.test.ts
+- packages/munchkins/agents/director/director-agent.test.ts
+- scenarios/director-multi-dispatch-e2e.ts
+- scenarios/fixtures/director-multi-dispatch-e2e/seed-repo/.gitignore
+- scenarios/fixtures/director-multi-dispatch-e2e/seed-repo/PURPOSE.md
+- scenarios/fixtures/director-multi-dispatch-e2e/seed-repo/package.json
+- scenarios/fixtures/director-multi-dispatch-e2e/seed-repo/src/example.ts
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-1/01-triage.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-1/02-spec.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-1/03-plan.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-1/04-summary.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-2/01-triage.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-2/02-spec.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-2/03-plan.json
+- scenarios/fixtures/director-multi-dispatch-e2e/mock-claude-responses/tick-2/04-summary.json
+- scenarios/lib/fake-bun-bin/bun
+- scenarios/lib/mock-spawn-claude.ts
+
+---
 ## feat(director): add cron-driven director munchkin + --branch-prefix plumbing (2b62c5d)
 **2026-05-10 21:59 PDT · feat-small · 1219.3s · $14.5252**
 
