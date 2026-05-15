@@ -18,8 +18,15 @@ function coerceForEnv(value: unknown): string {
   return String(value);
 }
 
+export interface RegisteredCommand {
+  name: string;
+  description: string;
+  configure: (cmd: Command) => void;
+}
+
 export class AgentRegistry {
   private agents = new Map<string, AgentBuilder>();
+  private commands = new Map<string, RegisteredCommand>();
 
   register(builder: AgentBuilder): void {
     if (this.agents.has(builder.name)) {
@@ -30,6 +37,13 @@ export class AgentRegistry {
 
   replace(builder: AgentBuilder): void {
     this.agents.set(builder.name, builder);
+  }
+
+  registerCommand(cmd: RegisteredCommand): void {
+    if (this.commands.has(cmd.name)) {
+      throw new Error(`Command "${cmd.name}" is already registered.`);
+    }
+    this.commands.set(cmd.name, cmd);
   }
 
   list(): string[] {
@@ -92,6 +106,10 @@ export class AgentRegistry {
         const result = await builder.run();
         process.exit(result.succeeded ? 0 : 1);
       });
+    }
+    for (const cmd of this.commands.values()) {
+      const sub = program.command(cmd.name).description(cmd.description);
+      cmd.configure(sub);
     }
     return program;
   }

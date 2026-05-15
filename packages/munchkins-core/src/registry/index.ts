@@ -1,1 +1,1 @@
-export { AgentRegistry, registry } from "./registry.js";
+export { AgentRegistry, type RegisteredCommand, registry } from "./registry.js";

@@ -77,3 +77,12 @@ export {
   type WorktreeInfo,
   worktreeExists,
 } from "./worktree.js";
+
+import { registry } from "./registry/index.js";
+import { registerResumeCommand } from "./resume/command.js";
+import { registerDaemonCommand } from "./scheduler/command.js";
+import { registerStatusCommand } from "./status/command.js";
+
+registerResumeCommand(registry);
+registerStatusCommand(registry);
+registerDaemonCommand(registry);
