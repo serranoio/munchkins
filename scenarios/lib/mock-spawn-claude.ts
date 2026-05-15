@@ -56,19 +56,19 @@ export async function spawnClaudeMock(opts: {
   // step's commit is the agent's responsibility on success. Mirror that so a
   // mid-pipeline failure leaves a clean worktree (and an unbroken commit graph
   // for the resume path to land on).
-  if (parsed.exitCode === 0) {
-    const marker = `__mock_${index}_${file.replace(/\.json$/, "")}.txt`;
-    await Bun.write(join(opts.cwd, marker), `mock invocation ${index}\n`);
-    const env = {
-      ...process.env,
-      GIT_AUTHOR_NAME: "mock",
-      GIT_AUTHOR_EMAIL: "mock@local",
-      GIT_COMMITTER_NAME: "mock",
-      GIT_COMMITTER_EMAIL: "mock@local",
-    };
-    await $`git add ${marker}`.cwd(opts.cwd).env(env).quiet();
-    await $`git commit -m ${`mock-${index}: ${file}`}`.cwd(opts.cwd).env(env).quiet();
-  }
+  if (parsed.exitCode !== 0) return parsed;
+
+  const marker = `__mock_${index}_${file.replace(/\.json$/, "")}.txt`;
+  await Bun.write(join(opts.cwd, marker), `mock invocation ${index}\n`);
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "mock",
+    GIT_AUTHOR_EMAIL: "mock@local",
+    GIT_COMMITTER_NAME: "mock",
+    GIT_COMMITTER_EMAIL: "mock@local",
+  };
+  await $`git add ${marker}`.cwd(opts.cwd).env(env).quiet();
+  await $`git commit -m ${`mock-${index}: ${file}`}`.cwd(opts.cwd).env(env).quiet();
 
   return parsed;
 }

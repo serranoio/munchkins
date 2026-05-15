@@ -11,6 +11,15 @@ import {
 } from "./run-state.js";
 import { makeRunState } from "./test-fixtures.js";
 
+function withRunLogDir(dir: string, fn: () => void): void {
+  process.env.MUNCHKINS_RUN_LOG_DIR = dir;
+  try {
+    fn();
+  } finally {
+    delete process.env.MUNCHKINS_RUN_LOG_DIR;
+  }
+}
+
 describe("run-state", () => {
   let tmp: string;
 
@@ -47,8 +56,7 @@ describe("run-state", () => {
   });
 
   test("listResumableRuns returns runs whose phase is steps/integrating", () => {
-    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
-    try {
+    withRunLogDir(tmp, () => {
       const a = join(tmp, "a-12345678");
       const b = join(tmp, "b-12345678");
       const c = join(tmp, "c-12345678");
@@ -63,41 +71,32 @@ describe("run-state", () => {
         .map((r) => r.state.runId)
         .sort();
       expect(ids).toEqual(["a-12345678", "b-12345678"]);
-    } finally {
-      delete process.env.MUNCHKINS_RUN_LOG_DIR;
-    }
+    });
   });
 
   test("listResumableRuns includes runs with phase: 'interrupted'", () => {
-    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
-    try {
+    withRunLogDir(tmp, () => {
       const a = join(tmp, "a-12345678");
       mkdirSync(a, { recursive: true });
       saveState(a, makeRunState({ runId: "a-12345678", phase: "interrupted", slug: "a" }));
 
       const ids = listResumableRuns(tmp).map((r) => r.state.runId);
       expect(ids).toEqual(["a-12345678"]);
-    } finally {
-      delete process.env.MUNCHKINS_RUN_LOG_DIR;
-    }
+    });
   });
 
   test("listResumableRuns excludes runs with phase: 'done'", () => {
-    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
-    try {
+    withRunLogDir(tmp, () => {
       const a = join(tmp, "a-12345678");
       mkdirSync(a, { recursive: true });
       saveState(a, makeRunState({ runId: "a-12345678", phase: "done", slug: "a" }));
 
       expect(listResumableRuns(tmp)).toEqual([]);
-    } finally {
-      delete process.env.MUNCHKINS_RUN_LOG_DIR;
-    }
+    });
   });
 
   test("listResumableRuns surfaces legacy phase: 'failed' state files as resumable", () => {
-    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
-    try {
+    withRunLogDir(tmp, () => {
       const a = join(tmp, "a-12345678");
       mkdirSync(a, { recursive: true });
       // Hand-write the file with the legacy "failed" phase so a state.json left
@@ -110,14 +109,11 @@ describe("run-state", () => {
 
       const ids = listResumableRuns(tmp).map((r) => r.state.runId);
       expect(ids).toEqual(["a-12345678"]);
-    } finally {
-      delete process.env.MUNCHKINS_RUN_LOG_DIR;
-    }
+    });
   });
 
   test("listResumableRuns ignores dirs without state.json", () => {
-    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
-    try {
+    withRunLogDir(tmp, () => {
       const a = join(tmp, "a-12345678");
       const empty = join(tmp, "empty-dir");
       mkdirSync(a, { recursive: true });
@@ -126,8 +122,6 @@ describe("run-state", () => {
 
       const ids = listResumableRuns(tmp).map((r) => r.state.runId);
       expect(ids).toEqual(["a-12345678"]);
-    } finally {
-      delete process.env.MUNCHKINS_RUN_LOG_DIR;
-    }
+    });
   });
 });

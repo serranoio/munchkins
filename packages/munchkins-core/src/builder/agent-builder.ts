@@ -325,6 +325,13 @@ export class AgentBuilder {
     logger.starting(cwd, state.steps.filter((s) => s.kind !== "summary").length);
 
     let failureReason: string | undefined;
+    // Persists `phase: "interrupted"` to disk eagerly at every failure site so
+    // a hard process exit between here and the final saveState still leaves a
+    // resumable state.json behind.
+    const markInterrupted = () => {
+      state.phase = "interrupted";
+      saveState(runLogDir, state);
+    };
 
     try {
       for (let i = 0; i < state.steps.length; i++) {
@@ -376,8 +383,7 @@ export class AgentBuilder {
       }
     } catch (err) {
       failureReason = (err as Error).message;
-      state.phase = "interrupted";
-      saveState(runLogDir, state);
+      markInterrupted();
     }
 
     // Summary writer phase — runs after main steps succeed, before integration.
@@ -408,8 +414,7 @@ export class AgentBuilder {
         );
         if (writerResult.failureReason) {
           failureReason = writerResult.failureReason;
-          state.phase = "interrupted";
-          saveState(runLogDir, state);
+          markInterrupted();
         } else {
           commitMessage = writerResult.commitMessage;
           summaryStep.commitMessage = commitMessage;
@@ -432,8 +437,7 @@ export class AgentBuilder {
       const selection = this._selectIntegrationStrategy(process.env.__MUNCHKINS_OPT_integrate);
       if (!selection.ok) {
         failureReason = selection.reason;
-        state.phase = "interrupted";
-        saveState(runLogDir, state);
+        markInterrupted();
       } else {
         const strategy = selection.strategy;
         const result = await strategy.run({
@@ -461,8 +465,7 @@ export class AgentBuilder {
 
         if (!result.ok) {
           failureReason = result.reason;
-          state.phase = "interrupted";
-          saveState(runLogDir, state);
+          markInterrupted();
         } else if (result.prUrl) {
           prUrl = result.prUrl;
         }
