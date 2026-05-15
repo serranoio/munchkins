@@ -201,14 +201,21 @@ async function run(): Promise<ScenarioResult> {
       return failResult("execution", "runDaemon did not arm a timer for the director builder");
     }
 
+    // Wires up the tick-completion promise, switches the mock fixture bucket,
+    // fires the most-recently-armed timer callback, and waits for the wrapped
+    // builder.run() to resolve.
+    const awaitTick = async (cb: () => void, bucket: string): Promise<void> => {
+      useTickBucket(bucket);
+      const done = new Promise((resolve, reject) => {
+        resolveCurrentTick = resolve;
+        rejectCurrentTick = reject;
+      });
+      cb();
+      await done;
+    };
+
     // ── Tick 1 ───────────────────────────────────────────────────────────────
-    useTickBucket("tick-1");
-    const tick1Done = new Promise((resolve, reject) => {
-      resolveCurrentTick = resolve;
-      rejectCurrentTick = reject;
-    });
-    pendingCallback();
-    await tick1Done;
+    await awaitTick(pendingCallback, "tick-1");
 
     const childLogAfterTick1 = readDispatchLog(dispatchLogPath);
     if (childLogAfterTick1.length !== 1) {
@@ -228,13 +235,7 @@ async function run(): Promise<ScenarioResult> {
     if (!pendingCallback) {
       return failResult("assertion", "tick 1 did not re-arm a timer for tick 2");
     }
-    useTickBucket("tick-2");
-    const tick2Done = new Promise((resolve, reject) => {
-      resolveCurrentTick = resolve;
-      rejectCurrentTick = reject;
-    });
-    pendingCallback();
-    await tick2Done;
+    await awaitTick(pendingCallback, "tick-2");
 
     const childLog: ChildSpawnEntry[] = readDispatchLog(dispatchLogPath);
     if (childLog.length !== 2) {

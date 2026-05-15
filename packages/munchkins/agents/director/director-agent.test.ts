@@ -44,6 +44,32 @@ async function createBareRepo(): Promise<Repo> {
   };
 }
 
+function makeDirectorEnv(
+  repoPath: string,
+  opts: { extraPath?: string; extras?: Record<string, string> } = {},
+) {
+  const basePath = process.env.PATH ?? "";
+  return {
+    ...process.env,
+    ...TEST_GIT_IDENTITY,
+    WORKTREE: repoPath,
+    REPO_ROOT: repoPath,
+    PATH: opts.extraPath ? `${opts.extraPath}:${basePath}` : basePath,
+    ...opts.extras,
+  };
+}
+
+async function withFailingGhStub<T>(fn: (stubDir: string) => Promise<T>): Promise<T> {
+  const stubDir = mkdtempSync(join(tmpdir(), "munchkins-director-stub-"));
+  try {
+    await Bun.write(join(stubDir, "gh"), "#!/usr/bin/env bash\nexit 1\n");
+    await $`chmod +x ${join(stubDir, "gh")}`.quiet();
+    return await fn(stubDir);
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true });
+  }
+}
+
 describe("director registration", () => {
   test("director is registered under name 'director' after side-effect import", () => {
     expect(registry.get("director")).toBeDefined();
@@ -85,13 +111,7 @@ describe("director scripts", () => {
   });
 
   test("repo-survey.sh exits non-zero with the expected error when PURPOSE.md is absent", async () => {
-    const env = {
-      ...process.env,
-      ...TEST_GIT_IDENTITY,
-      WORKTREE: repo.path,
-      REPO_ROOT: repo.path,
-      PATH: process.env.PATH ?? "",
-    };
+    const env = makeDirectorEnv(repo.path);
     // Seed the .director/current sentinel; the script checks PURPOSE.md
     // before reading it, so the failure path doesn't depend on this — but
     // having it present rules out "missing sentinel" as the failure mode.
@@ -106,18 +126,8 @@ describe("director scripts", () => {
 
   test("inflight-survey.sh in a repo with no director/* branches writes inflight.json with empty branches and worktrees", async () => {
     // Stub `gh` to fail so the PR inventory falls back to '[]'.
-    const stubDir = mkdtempSync(join(tmpdir(), "munchkins-director-stub-"));
-    try {
-      await Bun.write(join(stubDir, "gh"), "#!/usr/bin/env bash\nexit 1\n");
-      await $`chmod +x ${join(stubDir, "gh")}`.quiet();
-
-      const env = {
-        ...process.env,
-        ...TEST_GIT_IDENTITY,
-        WORKTREE: repo.path,
-        REPO_ROOT: repo.path,
-        PATH: `${stubDir}:${process.env.PATH ?? ""}`,
-      };
+    await withFailingGhStub(async (stubDir) => {
+      const env = makeDirectorEnv(repo.path, { extraPath: stubDir });
       const r = await $`bash ${join(SCRIPTS, "inflight-survey.sh")}`.env(env).nothrow().quiet();
       expect(r.exitCode).toBe(0);
 
@@ -130,9 +140,7 @@ describe("director scripts", () => {
       expect(inflight.worktrees).toEqual([]);
       // gh stub fails, so prs falls back to '[]' (empty array).
       expect(inflight.prs).toEqual([]);
-    } finally {
-      rmSync(stubDir, { recursive: true, force: true });
-    }
+    });
   });
 
   test("repo-survey.sh happy path writes survey.md with the expected sections when PURPOSE.md is present", async () => {
@@ -143,13 +151,7 @@ describe("director scripts", () => {
     const runId = "20260101T000000-survey-test";
     await Bun.write(join(repo.path, ".director", "current"), runId);
 
-    const env = {
-      ...process.env,
-      ...TEST_GIT_IDENTITY,
-      WORKTREE: repo.path,
-      REPO_ROOT: repo.path,
-      PATH: process.env.PATH ?? "",
-    };
+    const env = makeDirectorEnv(repo.path);
     const r = await $`bash ${join(SCRIPTS, "repo-survey.sh")}`.env(env).nothrow().quiet();
     expect(r.exitCode).toBe(0);
 
@@ -169,18 +171,8 @@ describe("director scripts", () => {
     await $`git branch director/alpha-001`.cwd(repo.path).env(gitEnv).quiet();
     await $`git branch director/beta-002`.cwd(repo.path).env(gitEnv).quiet();
 
-    const stubDir = mkdtempSync(join(tmpdir(), "munchkins-director-stub-"));
-    try {
-      await Bun.write(join(stubDir, "gh"), "#!/usr/bin/env bash\nexit 1\n");
-      await $`chmod +x ${join(stubDir, "gh")}`.quiet();
-
-      const env = {
-        ...process.env,
-        ...TEST_GIT_IDENTITY,
-        WORKTREE: repo.path,
-        REPO_ROOT: repo.path,
-        PATH: `${stubDir}:${process.env.PATH ?? ""}`,
-      };
+    await withFailingGhStub(async (stubDir) => {
+      const env = makeDirectorEnv(repo.path, { extraPath: stubDir });
       const r = await $`bash ${join(SCRIPTS, "inflight-survey.sh")}`.env(env).nothrow().quiet();
       expect(r.exitCode).toBe(0);
 
@@ -190,9 +182,7 @@ describe("director scripts", () => {
       );
       expect(inflight.branches).toContain("director/alpha-001");
       expect(inflight.branches).toContain("director/beta-002");
-    } finally {
-      rmSync(stubDir, { recursive: true, force: true });
-    }
+    });
   });
 
   test("dispatch.sh constructs the correct child argv for each work_type via the dry-run path", async () => {
@@ -221,14 +211,9 @@ describe("director scripts", () => {
         JSON.stringify({ work_type, goal: "irrelevant" }),
       );
 
-      const env = {
-        ...process.env,
-        ...TEST_GIT_IDENTITY,
-        WORKTREE: repo.path,
-        REPO_ROOT: repo.path,
-        PATH: process.env.PATH ?? "",
-        __MUNCHKINS_OPT_dryRun: "true",
-      };
+      const env = makeDirectorEnv(repo.path, {
+        extras: { __MUNCHKINS_OPT_dryRun: "true" },
+      });
       const r = await $`bash ${join(SCRIPTS, "dispatch.sh")}`.env(env).nothrow().quiet();
       expect(r.exitCode).toBe(0);
       const out = r.stdout.toString();
@@ -251,13 +236,7 @@ describe("director scripts", () => {
     // plan.md is intentionally not created — the idle short-circuit must run
     // before the "missing plan.md" failure path.
 
-    const env = {
-      ...process.env,
-      ...TEST_GIT_IDENTITY,
-      WORKTREE: repo.path,
-      REPO_ROOT: repo.path,
-      PATH: process.env.PATH ?? "",
-    };
+    const env = makeDirectorEnv(repo.path);
     const r = await $`bash ${join(SCRIPTS, "dispatch.sh")}`.env(env).nothrow().quiet();
     expect(r.exitCode).toBe(0);
     expect(r.stdout.toString()).toContain("triage idle");
