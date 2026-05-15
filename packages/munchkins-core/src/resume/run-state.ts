@@ -7,7 +7,7 @@ import type { SandboxState } from "../sandbox/sandbox.js";
 // written by runResume() in run-resume.ts.
 export const RESUME_USER_MESSAGE_SNAPSHOT_ENV = "__MUNCHKINS_RESUME_USER_MESSAGE_SNAPSHOT";
 
-export type RunPhase = "steps" | "integrating" | "done" | "failed";
+export type RunPhase = "steps" | "integrating" | "done" | "interrupted";
 
 export type StepKind = "agent" | "deterministic" | "summary";
 
@@ -97,7 +97,10 @@ export function listResumableRuns(repoRoot: string): ResumableRun[] {
       continue;
     }
     if (!state) continue;
-    if (state.phase === "done" || state.phase === "failed") continue;
+    // Legacy "failed" state files from older versions are also surfaced as
+    // resumable (forward-compat): operators don't lose recovery options across
+    // the rename to "interrupted".
+    if (state.phase === "done") continue;
     out.push({ runLogDir: dir, state });
   }
   return out;

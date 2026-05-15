@@ -1,0 +1,18 @@
+{
+  "exitCode": 0,
+  "events": [
+    { "type": "system", "subtype": "init", "session_id": "fake-summary-writer-0001" },
+    {
+      "type": "result",
+      "result": "Analyzed the diff and produced a summary.\n\n{\"commitMessage\": \"fix(math): resume pipeline completed after interrupt\", \"markdown\": \"**Goal:** Exercise the resume-after-claude-exit path end-to-end.\\n\\n**Outcome:** Phase 1 failed mid-refactor; phase 2 (subprocess) resumed via fake-claude shim and landed the change.\"}",
+      "usage": {
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_cost_usd": 0
+    }
+  ],
+  "commit": { "marker": "__resume_summary.txt", "message": "summary" }
+}

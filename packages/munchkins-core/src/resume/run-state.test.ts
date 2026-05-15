@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listResumableRuns, loadState, saveState, stateFilePath } from "./run-state.js";
+import {
+  listResumableRuns,
+  loadState,
+  type RunState,
+  saveState,
+  stateFilePath,
+} from "./run-state.js";
 import { makeRunState } from "./test-fixtures.js";
 
 describe("run-state", () => {
@@ -57,6 +63,53 @@ describe("run-state", () => {
         .map((r) => r.state.runId)
         .sort();
       expect(ids).toEqual(["a-12345678", "b-12345678"]);
+    } finally {
+      delete process.env.MUNCHKINS_RUN_LOG_DIR;
+    }
+  });
+
+  test("listResumableRuns includes runs with phase: 'interrupted'", () => {
+    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
+    try {
+      const a = join(tmp, "a-12345678");
+      mkdirSync(a, { recursive: true });
+      saveState(a, makeRunState({ runId: "a-12345678", phase: "interrupted", slug: "a" }));
+
+      const ids = listResumableRuns(tmp).map((r) => r.state.runId);
+      expect(ids).toEqual(["a-12345678"]);
+    } finally {
+      delete process.env.MUNCHKINS_RUN_LOG_DIR;
+    }
+  });
+
+  test("listResumableRuns excludes runs with phase: 'done'", () => {
+    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
+    try {
+      const a = join(tmp, "a-12345678");
+      mkdirSync(a, { recursive: true });
+      saveState(a, makeRunState({ runId: "a-12345678", phase: "done", slug: "a" }));
+
+      expect(listResumableRuns(tmp)).toEqual([]);
+    } finally {
+      delete process.env.MUNCHKINS_RUN_LOG_DIR;
+    }
+  });
+
+  test("listResumableRuns surfaces legacy phase: 'failed' state files as resumable", () => {
+    process.env.MUNCHKINS_RUN_LOG_DIR = tmp;
+    try {
+      const a = join(tmp, "a-12345678");
+      mkdirSync(a, { recursive: true });
+      // Hand-write the file with the legacy "failed" phase so a state.json left
+      // on disk by a previous version still shows up in `--list`.
+      const legacy = {
+        ...makeRunState({ runId: "a-12345678", slug: "a" }),
+        phase: "failed",
+      } as unknown as RunState;
+      saveState(a, legacy);
+
+      const ids = listResumableRuns(tmp).map((r) => r.state.runId);
+      expect(ids).toEqual(["a-12345678"]);
     } finally {
       delete process.env.MUNCHKINS_RUN_LOG_DIR;
     }

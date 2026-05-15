@@ -1,0 +1,50 @@
+#!/usr/bin/env bun
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { $ } from "bun";
+
+const fixtureDir = process.env.FAKE_CLAUDE_FIXTURE_DIR;
+const counterFile = process.env.FAKE_CLAUDE_COUNTER_FILE;
+if (!fixtureDir || !counterFile) {
+  process.stderr.write(
+    "fake-claude: FAKE_CLAUDE_FIXTURE_DIR and FAKE_CLAUDE_COUNTER_FILE must be set\n",
+  );
+  process.exit(2);
+}
+
+const files = readdirSync(fixtureDir)
+  .filter((f) => f.endsWith(".json"))
+  .sort();
+const idx = existsSync(counterFile) ? Number(readFileSync(counterFile, "utf-8")) : 0;
+if (idx >= files.length) {
+  process.stderr.write(
+    `fake-claude: fixture exhausted at index ${idx} (have ${files.length})\n`,
+  );
+  process.exit(3);
+}
+writeFileSync(counterFile, String(idx + 1));
+
+interface Fixture {
+  exitCode: number;
+  events: unknown[];
+  commit?: { marker: string; message: string };
+}
+const fx = JSON.parse(readFileSync(join(fixtureDir, files[idx]), "utf-8")) as Fixture;
+
+if (fx.commit) {
+  await Bun.write(fx.commit.marker, `fake-claude ${idx}\n`);
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "fake",
+    GIT_AUTHOR_EMAIL: "fake@local",
+    GIT_COMMITTER_NAME: "fake",
+    GIT_COMMITTER_EMAIL: "fake@local",
+  };
+  await $`git add ${fx.commit.marker}`.env(env).quiet();
+  await $`git commit -m ${fx.commit.message}`.env(env).quiet();
+}
+
+for (const ev of fx.events) {
+  process.stdout.write(`${JSON.stringify(ev)}\n`);
+}
+process.exit(fx.exitCode);

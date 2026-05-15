@@ -376,6 +376,8 @@ export class AgentBuilder {
       }
     } catch (err) {
       failureReason = (err as Error).message;
+      state.phase = "interrupted";
+      saveState(runLogDir, state);
     }
 
     // Summary writer phase — runs after main steps succeed, before integration.
@@ -406,6 +408,8 @@ export class AgentBuilder {
         );
         if (writerResult.failureReason) {
           failureReason = writerResult.failureReason;
+          state.phase = "interrupted";
+          saveState(runLogDir, state);
         } else {
           commitMessage = writerResult.commitMessage;
           summaryStep.commitMessage = commitMessage;
@@ -428,6 +432,8 @@ export class AgentBuilder {
       const selection = this._selectIntegrationStrategy(process.env.__MUNCHKINS_OPT_integrate);
       if (!selection.ok) {
         failureReason = selection.reason;
+        state.phase = "interrupted";
+        saveState(runLogDir, state);
       } else {
         const strategy = selection.strategy;
         const result = await strategy.run({
@@ -455,25 +461,33 @@ export class AgentBuilder {
 
         if (!result.ok) {
           failureReason = result.reason;
+          state.phase = "interrupted";
+          saveState(runLogDir, state);
         } else if (result.prUrl) {
           prUrl = result.prUrl;
         }
       }
     }
 
-    // Teardown is now cleanup-only.
-    if (sandboxHandle) {
-      const initialOutcome = failureReason ? "fail" : "pass";
-      const teardownResult = await sandboxHandle.teardown(initialOutcome, {
-        failureReason,
+    // Teardown only runs on success. On any failure the worktree + branch stay
+    // on disk so the operator can recover via `munchkins resume <runId>` — the
+    // state file remains in its "interrupted" phase, set by whichever failure
+    // site above triggered `failureReason`.
+    if (sandboxHandle && !failureReason) {
+      const teardownResult = await sandboxHandle.teardown("pass", {
+        failureReason: undefined,
       });
       if (!teardownResult.ok) {
         failureReason = teardownResult.reason;
+        state.phase = "interrupted";
       }
     }
 
-    state.phase = failureReason ? "failed" : "done";
-    if (failureReason) state.failureReason = failureReason;
+    if (failureReason) {
+      state.failureReason = failureReason;
+    } else {
+      state.phase = "done";
+    }
     saveState(runLogDir, state);
 
     const totalDurationS = ((Date.now() - runStart) / 1000).toFixed(1);

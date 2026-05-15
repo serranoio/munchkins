@@ -20,7 +20,7 @@
     "build": "turbo run build",
     "munchkins": "MUNCHKINS_CHANGELOG_PATH=docs/pages/changelog.md bun run packages/munchkins/src/index.ts",
     "release": "bun run scripts/release.ts",
-    "scenario": "bun run scenarios/index.ts && bun run scenarios/composition.ts",
+    "scenario": "bun run scenarios/index.ts && bun run scenarios/composition.ts && bun run scenarios/resume-after-claude-exit-e2e.ts",
     "docs:dev": "turbo run dev --filter=docs",
     "docs:build": "turbo run build --filter=docs"
   },

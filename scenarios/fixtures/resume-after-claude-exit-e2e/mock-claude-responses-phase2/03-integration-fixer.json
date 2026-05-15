@@ -1,0 +1,17 @@
+{
+  "exitCode": 0,
+  "events": [
+    { "type": "system", "subtype": "init", "session_id": "fake-integration-fixer-0001" },
+    {
+      "type": "result",
+      "result": "No conflicts to resolve. (fake-claude phase2 integration fixer — safety net; should not normally be consumed)",
+      "usage": {
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_cost_usd": 0
+    }
+  ]
+}
