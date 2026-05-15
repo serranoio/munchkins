@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Plan complete.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/plan.md",
+      "content": "# Refactor multiply()\n\n## Goal\nReplace the multiply() for-loop body in `src/example.ts` with `return a * b;`.\n\n## Files to modify\n- `src/example.ts` — replace multiply() body.\n\n## Implementation plan\n1. Edit src/example.ts. Replace the body of `multiply` with `return a * b;`.\n\n## Acceptance criteria\n- multiply(3, 4) === 12.\n\n## Out of scope\n- Renaming the function.\n"
+    }
+  ]
+}

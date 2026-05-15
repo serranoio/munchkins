@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Summary complete.\n\n{\"commitMessage\": \"director: dispatch bug-fix slice for add() operator\", \"markdown\": \"**Goal:** dispatch the bug-fix child to repair `add()` in `src/example.ts`.\\n\\n**Outcome:** triage + spec + plan written; dispatch intercepted by the harness.\"}",
+  "durationMs": 0
+}

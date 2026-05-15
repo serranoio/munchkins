@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Triage complete. Selected opportunity A (bug-fix) — fix add() in src/example.ts. Wrote .director/<RUN>/triage.json.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/triage.json",
+      "content": "{\n  \"work_type\": \"bug-fix\",\n  \"justification\": \"Opportunity A in PURPOSE.md: src/example.ts add() returns a-b instead of a+b. Single file, no upstream deps.\",\n  \"independence_argument\": \"No in-flight work; vertical-slice criteria pass trivially.\",\n  \"goal\": \"Change the operator in src/example.ts add() from - to +.\"\n}\n"
+    }
+  ]
+}

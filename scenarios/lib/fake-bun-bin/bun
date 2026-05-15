@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Harness shim that intercepts `bun run munchkins <child> ...` invocations made
+# by the director's dispatch.sh and synthesizes a green exit + a real
+# `director/<child>-tick-N` branch on `main` in the sandbox repo (mirroring
+# the integrateMerge cleanup contract). All other `bun ...` invocations pass
+# through to the real bun on PATH.
+#
+# This shim only exists because Bun's `$` shell template tag spawns external
+# commands via an internal path that does not flow through `Bun.spawn`, so the
+# audit guard wrap in scenarios/lib/mock-spawn-claude.ts cannot see them. The
+# narrow `run munchkins <child>` argv check keeps the shim from intercepting
+# the `bun run lint`, `bun test`, etc. calls that the director's own
+# deterministic-checks step depends on.
+
+set -e
+
+if [ "${1:-}" = "run" ] && [ "${2:-}" = "munchkins" ] && [ -n "${3:-}" ]; then
+  CHILD="$3"
+  : "${MUNCHKINS_DISPATCH_LOG:?MUNCHKINS_DISPATCH_LOG not set}"
+  mkdir -p "$(dirname "$MUNCHKINS_DISPATCH_LOG")"
+  TICK=$(($(wc -l < "$MUNCHKINS_DISPATCH_LOG" 2>/dev/null || echo 0) + 1))
+  printf '%s\t%s\n' "$CHILD" "$*" >> "$MUNCHKINS_DISPATCH_LOG"
+
+  BR="director/${CHILD}-tick-${TICK}"
+  MARKER=".director-intercept-${CHILD}-tick-${TICK}.txt"
+  TMPWT=$(mktemp -d -t munchkins-dispatch-XXXXXX)
+
+  git worktree add "$TMPWT" -b "$BR" main >/dev/null
+  printf 'intercept marker\n' > "$TMPWT/$MARKER"
+  git -C "$TMPWT" \
+    -c user.email=mock@local -c user.name=mock \
+    add "$MARKER"
+  git -C "$TMPWT" \
+    -c user.email=mock@local -c user.name=mock \
+    commit -m "dispatch intercept: $BR" --quiet
+  git worktree remove "$TMPWT" --force >/dev/null
+  git merge --ff-only "$BR" >/dev/null
+  git branch -D "$BR" >/dev/null
+
+  echo "[harness] dispatch intercepted: $BR"
+  exit 0
+fi
+
+# Strip our shim's directory (always the first PATH entry, set by the harness)
+# and exec the next bun. Using `env PATH=...` avoids mutating the caller's env.
+REAL_PATH="${PATH#*:}"
+exec env PATH="$REAL_PATH" bun "$@"

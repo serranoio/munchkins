@@ -204,4 +204,50 @@ describe("runDaemon", () => {
 
     expect(timerCalls).toBe(2);
   });
+
+  test("invoking the armed timer's callback fires builder.run() exactly once and re-arms the next tick", async () => {
+    const reg = new AgentRegistry();
+    const cronned = new AgentBuilder("alpha").cron("*/10 * * * *", {
+      userMessage: "tick",
+      verbosity: "thinking",
+    });
+    reg.register(cronned);
+
+    let runCalls = 0;
+    // Stub out the real run() — we only care that the daemon's tick callback
+    // reaches the builder. A real run() would spawn git/Claude and is covered
+    // by the harness scenario, not by this unit test.
+    (cronned as unknown as { run: () => Promise<unknown> }).run = async () => {
+      runCalls += 1;
+      return { worktreePath: "", branch: "", succeeded: true };
+    };
+
+    let armCount = 0;
+    let fired = false;
+
+    await runDaemon({
+      registry: reg,
+      now: () => new Date("2026-01-01T00:00:00Z"),
+      stdout: () => {},
+      stderr: () => {},
+      setTimer: (cb: () => void) => {
+        armCount += 1;
+        // Fire the FIRST armed timer synchronously; ignore the re-arm after
+        // fireTick completes so we don't loop forever.
+        if (!fired) {
+          fired = true;
+          cb();
+        }
+        return 0;
+      },
+    });
+
+    // fireTick is async and awaits builder.run() before re-arming; give it a
+    // microtask + macrotask window to settle.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(runCalls).toBe(1);
+    // First arm + the re-arm scheduled in fireTick's finally block.
+    expect(armCount).toBeGreaterThanOrEqual(2);
+  });
 });

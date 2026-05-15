@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Spec complete. Wrote .director/<RUN>/spec.md.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/spec.md",
+      "content": "# Fix add() operator\n\n## Goal\nChange `-` to `+` in `add()` of `src/example.ts` so the function returns the sum.\n\n## Files in scope\n- `src/example.ts` — flip the operator.\n\n## Acceptance criteria\n- `add(1, 2) === 3`.\n\n## Out of scope\n- Adding tests.\n"
+    }
+  ]
+}

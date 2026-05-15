@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Triage complete. Selected opportunity B (refactor) — extract multiply() body.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/triage.json",
+      "content": "{\n  \"work_type\": \"refactor\",\n  \"justification\": \"Opportunity B in PURPOSE.md: multiply() in src/example.ts can be collapsed into a one-line helper.\",\n  \"independence_argument\": \"No in-flight work; vertical-slice criteria pass trivially.\",\n  \"goal\": \"Replace the for-loop body of multiply() with a single-line expression that preserves behavior.\"\n}\n"
+    }
+  ]
+}

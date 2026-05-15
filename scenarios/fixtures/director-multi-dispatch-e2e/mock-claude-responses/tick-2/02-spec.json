@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Spec complete.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/spec.md",
+      "content": "# Refactor multiply()\n\n## Goal\nCollapse the for-loop body of `multiply()` in `src/example.ts` into a one-line expression.\n\n## Files in scope\n- `src/example.ts` — refactor multiply().\n\n## Acceptance criteria\n- multiply(3, 4) === 12 (behavior unchanged).\n\n## Out of scope\n- Renaming the function.\n"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "director-multi-dispatch-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "true",
+    "lint:fix": "true",
+    "typecheck": "true",
+    "scenario": "true"
+  }
+}

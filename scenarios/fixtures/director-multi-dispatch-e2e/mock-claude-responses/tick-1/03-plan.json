@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Plan complete. Wrote .director/<RUN>/plan.md.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/plan.md",
+      "content": "# Fix add() operator\n\n## Goal\nChange `-` to `+` in `add()` of `src/example.ts`.\n\n## Files to modify\n- `src/example.ts` — flip operator in add().\n\n## Implementation plan\n1. Edit src/example.ts. Replace `return a - b;` with `return a + b;` inside `add`.\n\n## Acceptance criteria\n- `add(1, 2) === 3`.\n\n## Out of scope\n- Adding tests.\n"
+    }
+  ]
+}

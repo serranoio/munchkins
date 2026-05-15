@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Summary complete.\n\n{\"commitMessage\": \"director: dispatch refactor slice for multiply()\", \"markdown\": \"**Goal:** dispatch the refactor child to collapse multiply() into a one-line helper.\\n\\n**Outcome:** triage + spec + plan written; dispatch intercepted by the harness.\"}",
+  "durationMs": 0
+}

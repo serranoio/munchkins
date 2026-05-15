@@ -134,6 +134,134 @@ describe("director scripts", () => {
       rmSync(stubDir, { recursive: true, force: true });
     }
   });
+
+  test("repo-survey.sh happy path writes survey.md with the expected sections when PURPOSE.md is present", async () => {
+    // Seed PURPOSE.md and the .director/current sentinel the script reads to
+    // resolve the active run dir.
+    await Bun.write(join(repo.path, "PURPOSE.md"), "# Purpose\nShip thin slices.\n");
+    await $`mkdir -p ${repo.path}/.director`.quiet();
+    const runId = "20260101T000000-survey-test";
+    await Bun.write(join(repo.path, ".director", "current"), runId);
+
+    const env = {
+      ...process.env,
+      ...TEST_GIT_IDENTITY,
+      WORKTREE: repo.path,
+      REPO_ROOT: repo.path,
+      PATH: process.env.PATH ?? "",
+    };
+    const r = await $`bash ${join(SCRIPTS, "repo-survey.sh")}`.env(env).nothrow().quiet();
+    expect(r.exitCode).toBe(0);
+
+    const surveyPath = join(repo.path, ".director", runId, "survey.md");
+    const survey = await Bun.file(surveyPath).text();
+    expect(survey).toContain("# Director repo survey —");
+    expect(survey).toContain("## Recent commits");
+    expect(survey).toContain("## Open PRs");
+    expect(survey).toContain("## Lint status");
+    expect(survey).toContain("## Typecheck status");
+  });
+
+  test("inflight-survey.sh detects existing director/* branches and lists them in inflight.json", async () => {
+    const gitEnv = { ...process.env, ...TEST_GIT_IDENTITY };
+    // Create two director/* branches against the seed commit so the survey
+    // has something to inventory.
+    await $`git branch director/alpha-001`.cwd(repo.path).env(gitEnv).quiet();
+    await $`git branch director/beta-002`.cwd(repo.path).env(gitEnv).quiet();
+
+    const stubDir = mkdtempSync(join(tmpdir(), "munchkins-director-stub-"));
+    try {
+      await Bun.write(join(stubDir, "gh"), "#!/usr/bin/env bash\nexit 1\n");
+      await $`chmod +x ${join(stubDir, "gh")}`.quiet();
+
+      const env = {
+        ...process.env,
+        ...TEST_GIT_IDENTITY,
+        WORKTREE: repo.path,
+        REPO_ROOT: repo.path,
+        PATH: `${stubDir}:${process.env.PATH ?? ""}`,
+      };
+      const r = await $`bash ${join(SCRIPTS, "inflight-survey.sh")}`.env(env).nothrow().quiet();
+      expect(r.exitCode).toBe(0);
+
+      const runId = (await Bun.file(join(repo.path, ".director", "current")).text()).trim();
+      const inflight = JSON.parse(
+        await Bun.file(join(repo.path, ".director", runId, "inflight.json")).text(),
+      );
+      expect(inflight.branches).toContain("director/alpha-001");
+      expect(inflight.branches).toContain("director/beta-002");
+    } finally {
+      rmSync(stubDir, { recursive: true, force: true });
+    }
+  });
+
+  test("dispatch.sh constructs the correct child argv for each work_type via the dry-run path", async () => {
+    // Seed the .director/<run>/ inputs dispatch.sh reads — triage.json drives
+    // the work_type → child-agent mapping; plan.md is the user-message payload.
+    const runId = "20260101T000000-dispatch-test";
+    const runDir = join(repo.path, ".director", runId);
+    await $`mkdir -p ${runDir}`.quiet();
+    await Bun.write(join(repo.path, ".director", "current"), runId);
+    await Bun.write(
+      join(runDir, "triage.json"),
+      JSON.stringify({ work_type: "bug-fix", goal: "fix the thing" }),
+    );
+    await Bun.write(join(runDir, "plan.md"), "# Plan\nDo the thing.\n");
+
+    const cases: { work_type: string; expected: string }[] = [
+      { work_type: "bug-fix", expected: "bug-fix" },
+      { work_type: "refactor", expected: "refactor" },
+      { work_type: "feature", expected: "feat-small" },
+      { work_type: "performance", expected: "refactor" },
+    ];
+
+    for (const { work_type, expected } of cases) {
+      await Bun.write(
+        join(runDir, "triage.json"),
+        JSON.stringify({ work_type, goal: "irrelevant" }),
+      );
+
+      const env = {
+        ...process.env,
+        ...TEST_GIT_IDENTITY,
+        WORKTREE: repo.path,
+        REPO_ROOT: repo.path,
+        PATH: process.env.PATH ?? "",
+        __MUNCHKINS_OPT_dryRun: "true",
+      };
+      const r = await $`bash ${join(SCRIPTS, "dispatch.sh")}`.env(env).nothrow().quiet();
+      expect(r.exitCode).toBe(0);
+      const out = r.stdout.toString();
+      expect(out).toContain("[director] dispatch (dry-run):");
+      expect(out).toContain(`bun run munchkins ${expected}`);
+      expect(out).toContain(`--user-message=${join(runDir, "plan.md")}`);
+      expect(out).toContain("--branch-prefix=director");
+    }
+  });
+
+  test("dispatch.sh short-circuits when triage.json reports idle", async () => {
+    const runId = "20260101T000000-dispatch-idle";
+    const runDir = join(repo.path, ".director", runId);
+    await $`mkdir -p ${runDir}`.quiet();
+    await Bun.write(join(repo.path, ".director", "current"), runId);
+    await Bun.write(
+      join(runDir, "triage.json"),
+      JSON.stringify({ idle: true, reason: "nothing in flight" }),
+    );
+    // plan.md is intentionally not created — the idle short-circuit must run
+    // before the "missing plan.md" failure path.
+
+    const env = {
+      ...process.env,
+      ...TEST_GIT_IDENTITY,
+      WORKTREE: repo.path,
+      REPO_ROOT: repo.path,
+      PATH: process.env.PATH ?? "",
+    };
+    const r = await $`bash ${join(SCRIPTS, "dispatch.sh")}`.env(env).nothrow().quiet();
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.toString()).toContain("triage idle");
+  });
 });
 
 // Smoke check that the director skill symlink resolves to the package source.
