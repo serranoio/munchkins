@@ -49,7 +49,14 @@ function buildHandle(path: string, branch: string, repoRoot: string): SandboxHan
   return {
     cwd: path,
     env,
-    diff: async () => (await $`git diff main...${env.BRANCH}`.cwd(path).quiet()).text(),
+    diff: async () => {
+      // Agents leave their work in the worktree without committing (the
+      // summary-writer authors the commit). Stage everything so the diff sees
+      // both modified-tracked and untracked files; otherwise the summary-writer
+      // sees an empty diff, skips, and the run lands zero commits.
+      await $`git add -A`.cwd(path).quiet();
+      return (await $`git diff --cached main`.cwd(path).quiet()).text();
+    },
     teardown: async (outcome, ctx) => {
       const currentBranch = env.BRANCH;
       if (outcome !== "pass") {

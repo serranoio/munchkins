@@ -213,6 +213,71 @@ describe("gitWorktreeSandbox", () => {
     }
   });
 
+  describe("diff()", () => {
+    test("returns the agent's uncommitted modifications to tracked files", async () => {
+      const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
+      try {
+        await Bun.write(join(handle.cwd, "seed.ts"), "export const seed = 99;\n");
+
+        const diff = await handle.diff?.();
+        expect(diff).toBeDefined();
+        expect(diff).toContain("seed.ts");
+        expect(diff).toContain("export const seed = 99");
+      } finally {
+        await $`git worktree remove --force ${handle.cwd}`.cwd(repo.path).quiet().nothrow();
+        await $`git branch -D ${handle.env.BRANCH}`.cwd(repo.path).quiet().nothrow();
+      }
+    });
+
+    test("returns the agent's untracked files (issue #1 — auditor HTML scenario)", async () => {
+      const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
+      try {
+        await Bun.write(join(handle.cwd, "report.html"), "<html>report</html>\n");
+
+        const diff = await handle.diff?.();
+        expect(diff).toBeDefined();
+        expect(diff).toContain("report.html");
+        expect(diff).toContain("report");
+      } finally {
+        await $`git worktree remove --force ${handle.cwd}`.cwd(repo.path).quiet().nothrow();
+        await $`git branch -D ${handle.env.BRANCH}`.cwd(repo.path).quiet().nothrow();
+      }
+    });
+
+    test("stages everything as a side effect, so summary-writer's commit captures the diff", async () => {
+      const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
+      try {
+        await Bun.write(join(handle.cwd, "tracked.ts"), "export const x = 2;\n");
+        await Bun.write(join(handle.cwd, "untracked.ts"), "export const y = 3;\n");
+
+        await handle.diff?.();
+
+        const status = (await $`git status --porcelain`.cwd(handle.cwd).quiet()).text();
+        // every line of porcelain output should start with a staged (index) marker
+        // — no leading space (unstaged) and no "??" (untracked).
+        const unstagedOrUntracked = status
+          .split("\n")
+          .filter((line) => line.length > 0)
+          .filter((line) => line.startsWith(" ") || line.startsWith("??"));
+        expect(unstagedOrUntracked).toEqual([]);
+      } finally {
+        await $`git worktree remove --force ${handle.cwd}`.cwd(repo.path).quiet().nothrow();
+        await $`git branch -D ${handle.env.BRANCH}`.cwd(repo.path).quiet().nothrow();
+      }
+    });
+
+    test("returns empty on a clean worktree (no false positives)", async () => {
+      const handle = await gitWorktreeSandbox().create("bug-fix", repo.path);
+      try {
+        const diff = await handle.diff?.();
+        expect(diff?.trim()).toBe("");
+      } finally {
+        await $`git worktree remove --force ${handle.cwd}`.cwd(repo.path).quiet().nothrow();
+        await $`git branch -D ${handle.env.BRANCH}`.cwd(repo.path).quiet().nothrow();
+      }
+    });
+  });
+
   describe("rehydrate", () => {
     test("returns a handle whose cwd and env.BRANCH match the existing worktree", async () => {
       const factory = gitWorktreeSandbox();
