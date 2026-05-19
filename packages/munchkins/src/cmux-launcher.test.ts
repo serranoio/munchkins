@@ -106,6 +106,7 @@ describe("buildCmuxCommand", () => {
       argv: NORMAL_ARGV,
       cwd: "/repo",
       now: 1700000000000,
+      env: {},
     });
     expect(workspaceName).toBe("bug-fix-1700000000000");
   });
@@ -115,6 +116,7 @@ describe("buildCmuxCommand", () => {
       argv: NORMAL_ARGV,
       cwd: "/some/where",
       now: 1,
+      env: {},
     });
     const cwdIdx = command.indexOf("--cwd");
     expect(cwdIdx).toBeGreaterThan(-1);
@@ -126,6 +128,7 @@ describe("buildCmuxCommand", () => {
       argv: ["bun", "/abs/index.ts", "bug-fix", "--user-message=./bug.md"],
       cwd: "/repo",
       now: 42,
+      env: {},
     });
     const inner = getInnerCommand(command);
     expect(inner.startsWith("MUNCHKINS_NO_CMUX=1 ")).toBe(true);
@@ -139,6 +142,7 @@ describe("buildCmuxCommand", () => {
       argv: ["bun", "/abs/index.ts", "bug-fix", "--no-cmux", "--user-message=./bug.md"],
       cwd: "/repo",
       now: 1,
+      env: {},
     });
     const inner = getInnerCommand(command);
     expect(inner).not.toContain("--no-cmux");
@@ -151,8 +155,68 @@ describe("buildCmuxCommand", () => {
       argv: ["bun", "/abs/index.ts", "bug-fix", "--user-message=can't stop"],
       cwd: "/repo",
       now: 1,
+      env: {},
     });
     const inner = getInnerCommand(command);
     expect(inner).toContain("'--user-message=can'\\''t stop'");
+  });
+
+  test("propagates MUNCHKINS_CHANGELOG_PATH so the agent's changelog lands in the canonical location", () => {
+    const { command } = buildCmuxCommand({
+      argv: NORMAL_ARGV,
+      cwd: "/repo",
+      now: 1,
+      env: { MUNCHKINS_CHANGELOG_PATH: "docs/pages/changelog.md" },
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).toContain("MUNCHKINS_CHANGELOG_PATH='docs/pages/changelog.md'");
+    // The munchkins-loop-break flag must still be set unconditionally.
+    expect(inner).toContain("MUNCHKINS_NO_CMUX=1");
+  });
+
+  test("propagates any MUNCHKINS_* env var, sorted for deterministic output", () => {
+    const { command } = buildCmuxCommand({
+      argv: NORMAL_ARGV,
+      cwd: "/repo",
+      now: 1,
+      env: {
+        MUNCHKINS_RUN_LOG_DIR: "/tmp/run-log",
+        MUNCHKINS_CHANGELOG_PATH: "docs/pages/changelog.md",
+        __MUNCHKINS_OPT_userMessage: "/abs/bug.md",
+        UNRELATED: "nope",
+      },
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).toContain("MUNCHKINS_CHANGELOG_PATH='docs/pages/changelog.md'");
+    expect(inner).toContain("MUNCHKINS_RUN_LOG_DIR='/tmp/run-log'");
+    expect(inner).toContain("__MUNCHKINS_OPT_userMessage='/abs/bug.md'");
+    expect(inner).not.toContain("UNRELATED");
+    // Sorted assignments: CHANGELOG comes before RUN_LOG_DIR comes before __MUNCHKINS.
+    const changelogPos = inner.indexOf("MUNCHKINS_CHANGELOG_PATH");
+    const runLogPos = inner.indexOf("MUNCHKINS_RUN_LOG_DIR");
+    expect(changelogPos).toBeLessThan(runLogPos);
+  });
+
+  test("does NOT propagate MUNCHKINS_NO_CMUX from the parent env (set explicitly)", () => {
+    const { command } = buildCmuxCommand({
+      argv: NORMAL_ARGV,
+      cwd: "/repo",
+      now: 1,
+      env: { MUNCHKINS_NO_CMUX: "0" },
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).toContain("MUNCHKINS_NO_CMUX=1");
+    expect(inner).not.toContain("MUNCHKINS_NO_CMUX=0");
+  });
+
+  test("shell-escapes propagated env var values containing single quotes", () => {
+    const { command } = buildCmuxCommand({
+      argv: NORMAL_ARGV,
+      cwd: "/repo",
+      now: 1,
+      env: { MUNCHKINS_CHANGELOG_PATH: "path with 'quote'.md" },
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).toContain("MUNCHKINS_CHANGELOG_PATH='path with '\\''quote'\\''.md'");
   });
 });

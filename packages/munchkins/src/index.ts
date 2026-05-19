@@ -17,6 +17,7 @@ if (import.meta.main) {
       argv: process.argv,
       cwd: process.cwd(),
       now: Date.now(),
+      env: process.env,
     });
     const agentName = process.argv[2];
     process.stdout.write(`Launching ${agentName} in cmux workspace: ${workspaceName}\n`);

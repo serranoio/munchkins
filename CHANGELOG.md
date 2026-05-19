@@ -4,33 +4,6 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
-## feat(integrate): tolerate dirty repoRoot on ff-merge via snapshot commit (ffa8d58)
-**2026-05-19 15:40 PDT · feat-small · 1640.6s · $12.4510**
-
-**Goal:** Make the agent's isolated branch always land on `main` even when the operator's `repoRoot` working tree is dirty, preserving pre-existing dirty work as a recoverable snapshot commit.
-
-**Outcome:** `integrateBranch` now runs a pre-flight check (`snapshotDirtyRepoRoot`) that stages everything (`git add -A`) and commits it on `main` as `munchkins: pre-merge snapshot of dirty repoRoot @ <unix-ms>` under a forced `munchkins <munchkins@local>` identity when the working tree is non-empty. The rebase invocation in `rebaseAndResolve` now uses `git rebase -X theirs main`, so the agent's commits win every content conflict against the snapshot, then the existing ff-merge path succeeds unchanged. A parameterized scenario harness at `scenarios/dirty-main-e2e.ts` exercises five dirty-tree variants end-to-end, and `integrate.test.ts` pins the same matrix at the unit level.
-
-**How to test manually:**
-
-1. From the repo root, run `bun run scenario` and confirm `dirty-main-e2e` is in the script output and exits 0. The harness covers D1–D5 in-process; expect a single `pass` line for `dirty-main-e2e`.
-2. Run only the unit matrix: `bun test packages/munchkins-core/src/integrate.test.ts`. Look for the `integrateBranch dirty-repoRoot matrix` describe block — D1 through D5 should all pass, plus the existing single/two-file conflict tests now resolving without a fixer.
-3. Real-agent smoke test of the clean-tree regression path: in a clean checkout of this repo, run `bun run munchkins bug-fix --userMessage="trivial: append a blank line to docs/pages/index.mdx"` and confirm the agent merges to `main` with no snapshot commit. Verify with `git log --grep="munchkins: pre-merge snapshot" main` — should return empty.
-4. Real-agent smoke test of the dirty-tree path with no overlap: from a clean main, run `echo 'dirty' >> README.md` (do NOT stage), then `bun run munchkins bug-fix --userMessage="trivial: add a comment to docs/pages/index.mdx"`. Expect agent success, then `git log --grep="munchkins: pre-merge snapshot" main` returns one commit. Recover the dirty README via `git show <sha>:README.md` and confirm it ends with the `dirty` line.
-5. Real-agent smoke test of the overlap path: from a clean main, stage a conflicting edit to a file you know the agent will touch (e.g. `echo 'export const x = 99' > some-file.ts && git add some-file.ts`) then run the same agent. Expect agent success; `cat some-file.ts` shows the agent's version (not `99`); `git show <snapshot-sha>:some-file.ts` shows `export const x = 99`.
-6. Run `git log --author=munchkins main` after step 4 or 5 — the snapshot commit should appear with author `munchkins <munchkins@local>`, confirming it is filterable and doesn't impersonate the operator.
-
-**Files changed:**
-
-- AGENTS.md
-- docs/pages/internal/scenario-testing-strategy.md
-- package.json
-- packages/munchkins-core/src/integrate.ts
-- packages/munchkins-core/src/integrate.test.ts
-- packages/munchkins-core/src/sandbox/sandbox.test.ts
-- scenarios/dirty-main-e2e.ts
-
----
 ## test(scenarios): add director multi-dispatch e2e + cron callback coverage (a9d43a2)
 **2026-05-15 07:57 PDT · feat-small · 1771.6s · $16.0794**
 
