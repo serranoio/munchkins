@@ -14,7 +14,7 @@ const SCRIPTS = join(AGENT_DIR, "scripts");
 
 const builder = new AgentBuilder(
   "director",
-  "Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins.",
+  "Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins. Reads PURPOSE.md as its north star, picks a vertical slice independent of in-flight work, and hands the slice to feat-small / bug-fix / refactor.",
   gitWorktreeSandbox(),
 )
   // userMessage is the cron tick payload; the daemon also passes it via env.
@@ -29,9 +29,21 @@ const builder = new AgentBuilder(
   })
   .addDeterministic([`bash ${join(SCRIPTS, "inflight-survey.sh")}`])
   .addDeterministic([`bash ${join(SCRIPTS, "repo-survey.sh")}`])
-  .add(new Prompt(GUIDELINES_PATH).withSkill("director").withSystem(join(PROMPTS, "triage.md")))
-  .add(new Prompt(GUIDELINES_PATH).withSkill("director").withSystem(join(PROMPTS, "spec.md")))
-  .add(new Prompt(GUIDELINES_PATH).withSkill("director").withSystem(join(PROMPTS, "plan.md")))
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSkill("munchkins:director")
+      .withSystem(join(PROMPTS, "triage.md")),
+  )
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSkill("munchkins:director")
+      .withSystem(join(PROMPTS, "spec.md")),
+  )
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSkill("munchkins:director")
+      .withSystem(join(PROMPTS, "plan.md")),
+  )
   .addDeterministic([`bash ${join(SCRIPTS, "dispatch.sh")}`])
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },

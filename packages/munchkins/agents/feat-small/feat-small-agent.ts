@@ -14,7 +14,7 @@ const PROMPTS = getAgentPromptsDir(import.meta.url);
 
 const builder = new AgentBuilder(
   "feat-small",
-  "Implement a new feature described in a markdown user-message file.",
+  "Implement a small new feature via the munchkins feat-small agent — adds the feature in a fresh worktree, refactors touched files, writes minimal tests for new public surface, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a small feature added via the deterministic agent rather than inline editing.",
   gitWorktreeSandbox(),
 )
   .option("branchPrefix", BRANCH_PREFIX_OPTION)
@@ -41,6 +41,8 @@ const builder = new AgentBuilder(
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },
   })
+  // Per-agent summary writer (not defaultSummaryWriter): requires a "How to test
+  // manually" recipe so an operator can smoke-test the new feature end-to-end.
   .summaryWriter(new Prompt(GUIDELINES_PATH).withSystem(join(PROMPTS, "summary-writer.md")));
 
 registry.register(builder);

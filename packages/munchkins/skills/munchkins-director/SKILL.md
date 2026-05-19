@@ -1,5 +1,5 @@
 ---
-name: director
+name: munchkins:director
 description: Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins. Reads PURPOSE.md as its north star, picks a vertical slice independent of in-flight work, and hands the slice to feat-small / bug-fix / refactor.
 ---
 

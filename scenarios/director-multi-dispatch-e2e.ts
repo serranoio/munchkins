@@ -147,10 +147,17 @@ async function run(): Promise<ScenarioResult> {
     sandboxPath = sandbox.path;
     cleanup = sandbox.cleanup;
 
-    // Install the director skill into the sandbox so withSkill("director")
+    // Install the director skill into the sandbox so withSkill("munchkins:director")
     // resolves against the sandboxed repo root.
-    const skillSrc = join(repoRoot, "packages", "munchkins", "skills", "director", "SKILL.md");
-    const skillDestDir = join(sandbox.path, ".claude", "skills", "director");
+    const skillSrc = join(
+      repoRoot,
+      "packages",
+      "munchkins",
+      "skills",
+      "munchkins-director",
+      "SKILL.md",
+    );
+    const skillDestDir = join(sandbox.path, ".claude", "skills", "munchkins-director");
     mkdirSync(skillDestDir, { recursive: true });
     copyFileSync(skillSrc, join(skillDestDir, "SKILL.md"));
 

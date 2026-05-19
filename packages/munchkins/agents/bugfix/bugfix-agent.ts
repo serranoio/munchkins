@@ -10,7 +10,7 @@ import {
 
 const builder = new AgentBuilder(
   "bug-fix",
-  "Fix a bug described in a markdown user-message file.",
+  "Diagnose and fix a bug end-to-end via the munchkins bug-fix agent — runs in a fresh worktree, applies a minimal fix, refactors what was touched, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a bug fixed via the deterministic agent rather than inline editing.",
   gitWorktreeSandbox(),
 )
   .option("branchPrefix", BRANCH_PREFIX_OPTION)

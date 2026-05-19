@@ -7,7 +7,7 @@ This file is the operating contract for any agent (human or automated) working i
 `munchkins` is a Bun + Turborepo monorepo containing three workspaces:
 
 - `packages/munchkins-core` — the `@serranolabs.io/munchkins-core` package: framework primitives (`AgentBuilder`, `Prompt`, `AgentRegistry`, `spawnClaude`, worktree helpers).
-- `packages/munchkins` — the `@serranolabs.io/munchkins` package: defaults bundle that depends on `-core` and ships default agents (currently `bug-fix` and `refactor`) registered with the framework registry on import.
+- `packages/munchkins` — the `@serranolabs.io/munchkins` package: defaults bundle that depends on `-core` and ships default agents (`bug-fix`, `feat-small`, `refactor`, `director`) registered with the framework registry on import.
 - `docs` — the Rspress docs site rendering the project's documentation.
 
 Plus one non-workspace harness directory:
@@ -81,9 +81,10 @@ The bundle (`@serranolabs.io/munchkins`) registers two default agents on import.
 
 | Agent | What it does |
 |-------|--------------|
-| `bug-fix` | Locates the root cause of a described bug and applies a minimal fix; runs a post-fix refactor pass on touched files. |
-| `refactor` | Refactors a target for DRY, naming, decomposition, or clarity, behavior-preserving. |
-| `director` | Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins. Requires `PURPOSE.md` at the repo root. |
+| `bug-fix` | Diagnose and fix a bug end-to-end via the munchkins bug-fix agent — runs in a fresh worktree, applies a minimal fix, refactors what was touched, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a bug fixed via the deterministic agent rather than inline editing. |
+| `feat-small` | Implement a small new feature via the munchkins feat-small agent — adds the feature in a fresh worktree, refactors touched files, writes minimal tests for new public surface, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants a small feature added via the deterministic agent rather than inline editing. |
+| `refactor` | Behavior-preserving refactor of a target via the munchkins refactor agent — runs in a fresh worktree, applies DRY/clarity changes inside the named scope, gates with lint/typecheck/scenario, then merges or opens a PR. Use when the user wants refactoring done via the deterministic agent rather than inline editing. |
+| `director` | Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins. Reads PURPOSE.md as its north star, picks a vertical slice independent of in-flight work, and hands the slice to feat-small / bug-fix / refactor. |
 
 Invocation:
 
