@@ -42,24 +42,26 @@ If multiple subcommands could apply (e.g., "fix the duplicated logic in X" — `
 
 ### 3. Resolve the user-message file
 
-**If the request includes a path to an existing `.md` file** (e.g., "launch refactor with `scratch/refactor-runlogger.md`"): use that path as-is.
+**If the request includes a path to an existing `.md` file** (e.g., "launch refactor with `docs/pages/internal/plans/refactor-runlogger.md`"): use that path as-is.
 
-**Otherwise**, generate a spec at `scratch/<subcommand>-<short-slug>.md` from the conversation context. The spec must:
+**Otherwise**, generate a spec at `docs/pages/internal/plans/<subcommand>-<short-slug>.md` from the conversation context. The spec must:
 - State the goal in one paragraph at the top
 - Identify target files using `path:line` references
 - List acceptance criteria (concrete, checkable)
 - Include an explicit **Out of scope** section listing what NOT to touch
 
-Use the existing `scratch/refactor-runlogger.md` and `scratch/feat-thinking-flag.md` as shape references — short headings, ASCII tables for behavior matrices, code blocks for type signatures.
+Use existing plans in `docs/pages/internal/plans/` as shape references — short headings, ASCII tables for behavior matrices, code blocks for type signatures.
 
 Show the user the spec contents and the exact command before invoking. Confirm once.
 
 ### 4. Spawn (default mode)
 
+Always pass `--verbose`. The user runs munchkins inside `cmux`, which detaches the agent from the foreground `bun run` (the task-notification's "completed" fires the moment cmux acks the handoff, not when the agent finishes — that's expected and intentional). Without `--verbose`, the cmux session is silent and the user can't tell from inside cmux whether the agent is working, stuck, or already done. `--verbose` makes the cmux session show full agent output so the user can monitor and intervene.
+
 Run in background and exit:
 
 ```bash
-bun run munchkins <subcommand> --user-message <path>
+bun run munchkins <subcommand> --user-message <path> --verbose
 ```
 
 Invoke via `Bash(run_in_background: true)`. Then **stop**.
@@ -85,10 +87,9 @@ If the user explicitly says "just write the spec", "give me the command, don't r
 
 ## Flag handling
 
-Pass these flags through only when the user explicitly asks for them. Do not infer.
+`--verbose` is always set (see step 4). Pass these other flags through only when the user explicitly asks for them. Do not infer.
 
 - `--cli claude|codex` — backend selector
-- `--verbose` — full output
 - `--thinking` — middle verbosity (Claude streaming visible without boxed prompts)
 - `--dry-run` — print resolved pipeline without invoking; in this mode run **foreground** (it's fast, side-effect-free, and the output is the entire point)
 
@@ -100,7 +101,7 @@ Pass these flags through only when the user explicitly asks for them. Do not inf
 - Does not validate flag combinations — the CLI does that.
 - Does not bundle scripts — all operations are inline shell.
 
-## Spec template (for generated `scratch/*.md` files)
+## Spec template (for generated `docs/pages/internal/plans/*.md` files)
 
 ```markdown
 # <Type>: <one-line goal>
