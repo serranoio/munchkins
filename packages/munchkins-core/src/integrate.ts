@@ -364,25 +364,36 @@ type CreateResult = { ok: true; url: string } | { ok: false; reason: string };
 
 function parseCreateResult(
   cliLabel: string,
-  r: { exitCode: number; stdout: { toString(): string }; stderr: { toString(): string } },
+  r: { exitCode: number | null; stdout: Uint8Array; stderr: Uint8Array },
 ): CreateResult {
+  const decode = (b: Uint8Array) => new TextDecoder().decode(b);
   if (r.exitCode !== 0) {
-    return { ok: false, reason: `${cliLabel} failed: ${r.stderr.toString().slice(-500)}` };
+    return { ok: false, reason: `${cliLabel} failed: ${decode(r.stderr).slice(-500)}` };
   }
-  const stdout = r.stdout.toString();
+  const stdout = decode(r.stdout);
   return { ok: true, url: stdout.match(/https?:\/\/\S+/)?.[0] ?? stdout.trim() };
 }
 
+// `Bun.spawnSync` (not `$`) because Bun's shell resolves the `gh`/`glab`
+// binary against a startup-cached PATH, ignoring later `process.env.PATH`
+// mutations. Tests rely on prepending a stub directory to PATH at runtime, so
+// the spawn call captures `{ ...process.env }` explicitly and Bun resolves the
+// binary against the current PATH instead of the cached one.
 async function createGithubPR(
   workdir: string,
   title: string,
   body: string,
   base: string,
 ): Promise<CreateResult> {
-  const r = await $`gh pr create --title ${title} --body ${body} --base ${base}`
-    .cwd(workdir)
-    .nothrow()
-    .quiet();
+  const r = Bun.spawnSync(
+    ["gh", "pr", "create", "--title", title, "--body", body, "--base", base],
+    {
+      cwd: workdir,
+      env: { ...process.env },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   return parseCreateResult("gh pr create", r);
 }
 
@@ -392,11 +403,26 @@ async function createGitlabMR(
   body: string,
   base: string,
 ): Promise<CreateResult> {
-  const r =
-    await $`glab mr create --title ${title} --description ${body} --target-branch ${base} --yes`
-      .cwd(workdir)
-      .nothrow()
-      .quiet();
+  const r = Bun.spawnSync(
+    [
+      "glab",
+      "mr",
+      "create",
+      "--title",
+      title,
+      "--description",
+      body,
+      "--target-branch",
+      base,
+      "--yes",
+    ],
+    {
+      cwd: workdir,
+      env: { ...process.env },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   return parseCreateResult("glab mr create", r);
 }
 

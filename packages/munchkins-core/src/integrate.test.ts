@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -614,5 +614,272 @@ describe("detectProvider", () => {
       .quiet();
     const provider = await detectProvider(repo.path, "origin");
     expect(provider).toBe("github");
+  });
+});
+
+interface GhStub {
+  dir: string;
+  invocationsDir: string;
+  cleanup: () => void;
+}
+
+// Stand up a fake `gh` on PATH that records its argv to one file per arg
+// (preserving newlines in `--body`) and prints `prUrl` to stdout. Returns
+// handles so the test can read the recorded args and tear the stub down.
+function makeGhStub(prUrl: string, cliName: "gh" | "glab" = "gh"): GhStub {
+  const dir = mkdtempSync(join(tmpdir(), `munchkins-${cliName}-stub-`));
+  const invocationsDir = join(dir, "invocations");
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "${invocationsDir}"
+i=0
+for a in "$@"; do
+  printf '%s' "$a" > "${invocationsDir}/arg-$(printf '%03d' $i)"
+  i=$((i+1))
+done
+printf '%s\\n' "${prUrl}"
+`;
+  const stubPath = join(dir, cliName);
+  writeFileSync(stubPath, script);
+  chmodSync(stubPath, 0o755);
+  return {
+    dir,
+    invocationsDir,
+    cleanup: () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // best-effort
+      }
+    },
+  };
+}
+
+function readStubArgs(invocationsDir: string): string[] {
+  const files = readdirSync(invocationsDir).sort();
+  return files.map((f) => readFileSync(join(invocationsDir, f), "utf-8"));
+}
+
+// Bare-repo origin so `git push -u origin <branch>` succeeds against a real
+// remote without touching the network. `main` is seeded onto the bare repo so
+// the agent branch has somewhere to push from.
+async function attachBareOrigin(
+  repoRoot: string,
+): Promise<{ barePath: string; cleanup: () => void }> {
+  const barePath = mkdtempSync(join(tmpdir(), "munchkins-bare-origin-"));
+  await $`git init --bare -b main`.cwd(barePath).quiet();
+  await $`git remote add origin ${barePath}`.cwd(repoRoot).env(gitEnv()).quiet();
+  await $`git push -u origin main`.cwd(repoRoot).env(gitEnv()).quiet();
+  return {
+    barePath,
+    cleanup: () => {
+      try {
+        rmSync(barePath, { recursive: true, force: true });
+      } catch {
+        // best-effort
+      }
+    },
+  };
+}
+
+describe("integratePR happy path", () => {
+  let repo: Repo;
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+  afterEach(() => repo.cleanup());
+
+  test("clean branch: pushes to origin, opens PR with summary, main unchanged (I7)", async () => {
+    const origin = await attachBareOrigin(repo.path);
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "feat: add fresh");
+
+    // Acceptance: branch follows `agent/<slug>-<hash>`.
+    expect(branch).toMatch(/^agent\/bug-fix-/);
+
+    const tipSha = (await $`git rev-parse HEAD`.cwd(workdir).quiet()).text().trim();
+    const mainShaBefore = (await $`git rev-parse main`.cwd(repo.path).quiet()).text().trim();
+
+    const stub = makeGhStub("https://github.com/foo/bar/pull/42");
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${stub.dir}:${originalPath ?? ""}`;
+    try {
+      const result = await integratePR({ provider: "github" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "add a tiny module",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+        commitMessage: "feat: add fresh",
+        markdownSummary: "## Summary\n\nAdded a small module that exports a constant.\n",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.fixerIters).toBe(0);
+        expect(result.prUrl).toBe("https://github.com/foo/bar/pull/42");
+      }
+
+      // Acceptance: gh invoked with the right title/body/base.
+      const args = readStubArgs(stub.invocationsDir);
+      expect(args[0]).toBe("pr");
+      expect(args[1]).toBe("create");
+      expect(args).toContain("--title");
+      expect(args).toContain("--body");
+      expect(args).toContain("--base");
+      expect(args[args.indexOf("--title") + 1]).toBe("feat: add fresh");
+      expect(args[args.indexOf("--body") + 1]).toBe(
+        "## Summary\n\nAdded a small module that exports a constant.\n",
+      );
+      expect(args[args.indexOf("--base") + 1]).toBe("main");
+
+      // Acceptance: branch reached origin (push happened, not force).
+      const remoteSha = (
+        await $`git ls-remote ${origin.barePath} refs/heads/${branch}`.cwd(repo.path).quiet()
+      )
+        .text()
+        .trim()
+        .split(/\s+/)[0];
+      expect(remoteSha).toBe(tipSha);
+
+      // Acceptance: local main does NOT advance under PR strategy.
+      const mainShaAfter = (await $`git rev-parse main`.cwd(repo.path).quiet()).text().trim();
+      expect(mainShaAfter).toBe(mainShaBefore);
+
+      // Acceptance: SHAs match local — no force-push surprises.
+      const branchShaLocal = (await $`git rev-parse ${branch}`.cwd(repo.path).quiet())
+        .text()
+        .trim();
+      expect(branchShaLocal).toBe(tipSha);
+    } finally {
+      process.env.PATH = originalPath;
+      stub.cleanup();
+      origin.cleanup();
+    }
+  });
+
+  test("director-prefixed branch pushes + opens PR under director/<...> (I8)", async () => {
+    const origin = await attachBareOrigin(repo.path);
+    // Caller-supplied branch — mirrors AgentBuilder's branch-prefix rename
+    // landing the worktree on `director/<slug>-<hash>` before integration.
+    const directorBranch = "director/feat-thing-deadbeef";
+    const { path: workdir, branch } = await createWorktree("feat-small", repo.path, directorBranch);
+    expect(branch).toBe(directorBranch);
+    await commitFile(workdir, "thing.ts", "export const t = 1;\n", "feat: thing");
+    const tipSha = (await $`git rev-parse HEAD`.cwd(workdir).quiet()).text().trim();
+
+    const stub = makeGhStub("https://github.com/foo/bar/pull/99");
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${stub.dir}:${originalPath ?? ""}`;
+    try {
+      const result = await integratePR({ provider: "github" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "director-dispatched work",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+        commitMessage: "feat: thing",
+        markdownSummary: "director run",
+      });
+
+      expect(result.ok).toBe(true);
+
+      // Acceptance: branch on origin matches `director/*` pattern that the
+      // director's inflight survey grep depends on.
+      const remoteRefs = (
+        await $`git ls-remote ${origin.barePath} 'refs/heads/director/*'`.cwd(repo.path).quiet()
+      )
+        .text()
+        .trim();
+      expect(remoteRefs).toContain(`refs/heads/${directorBranch}`);
+      expect(remoteRefs.split(/\s+/)[0]).toBe(tipSha);
+    } finally {
+      process.env.PATH = originalPath;
+      stub.cleanup();
+      origin.cleanup();
+    }
+  });
+
+  test("missing commitMessage + summary → safe fallback title and body (I9)", async () => {
+    const origin = await attachBareOrigin(repo.path);
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "x.ts", "export const x = 1;\n", "commit");
+
+    const stub = makeGhStub("https://github.com/foo/bar/pull/1");
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${stub.dir}:${originalPath ?? ""}`;
+    try {
+      const result = await integratePR({ provider: "github" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "no summary writer ran",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+        // commitMessage and markdownSummary intentionally omitted.
+      });
+      expect(result.ok).toBe(true);
+
+      const args = readStubArgs(stub.invocationsDir);
+      expect(args[args.indexOf("--title") + 1]).toBe(`agent: ${branch}`);
+      expect(args[args.indexOf("--body") + 1]).toBe("(no summary writer ran)");
+    } finally {
+      process.env.PATH = originalPath;
+      stub.cleanup();
+      origin.cleanup();
+    }
+  });
+
+  test("gh pr create failure surfaces as IntegrationResult error (I10)", async () => {
+    const origin = await attachBareOrigin(repo.path);
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "x.ts", "export const x = 1;\n", "commit");
+
+    // Stub that exits non-zero.
+    const dir = mkdtempSync(join(tmpdir(), "munchkins-gh-fail-stub-"));
+    const stubPath = join(dir, "gh");
+    writeFileSync(
+      stubPath,
+      "#!/usr/bin/env bash\necho 'gh: API rate limit exceeded' 1>&2\nexit 1\n",
+    );
+    chmodSync(stubPath, 0o755);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${dir}:${originalPath ?? ""}`;
+    try {
+      const result = await integratePR({ provider: "github" }).run({
+        workdir,
+        branch,
+        repoRoot: repo.path,
+        baseBranch: "main",
+        originalGoal: "x",
+        cli: new FailIfSpawnedCLI(),
+        postFixChecks: [],
+        commitMessage: "x",
+        markdownSummary: "x",
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/gh pr create failed/);
+        expect(result.reason).toMatch(/rate limit/);
+      }
+      // Push happened before gh create, so the branch is still on origin —
+      // confirm we don't claim success when the PR step fails.
+      const remoteSha = (
+        await $`git ls-remote ${origin.barePath} refs/heads/${branch}`.cwd(repo.path).quiet()
+      )
+        .text()
+        .trim();
+      expect(remoteSha.length).toBeGreaterThan(0);
+    } finally {
+      process.env.PATH = originalPath;
+      rmSync(dir, { recursive: true, force: true });
+      origin.cleanup();
+    }
   });
 });
