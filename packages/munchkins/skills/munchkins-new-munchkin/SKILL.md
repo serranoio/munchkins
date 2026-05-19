@@ -605,6 +605,8 @@ If the description changed, surface a one-line note: `Mirror this row update in 
 
 ### 6. Hard rules
 
+- **Never create `.sh` (or any shell-script) files.** All executable artifacts this skill produces — bundle entries, agent files, runners, smoke tests, scaffolds — are TypeScript (`.ts`) executed via Bun (e.g., `#!/usr/bin/env bun`). If a step would have produced a shell script (wrapper, install helper, smoke runner), produce a `.ts` file instead and invoke it through `bun <path>` or a `package.json` script. Shell-only commands (e.g., `ln -s ...` for the source-repo symlink) are run by the user/operator from the terminal, never written to a `.sh` file by this skill.
+- **Never create `<agent>-agent.test.ts` files for agents.** Agent files are pure configuration (builder declaration, step composition, cron config) — asserting "name === 'foo'" or "step count === 7" against the registered singleton re-states the source. Exercise agents end-to-end via the scenario harness (`scenarios/*.ts`), where real failure modes surface. Framework code under `packages/munchkins-core/src/` is the exception: it has a consumer-facing API surface and keeps its colocated `.test.ts` files.
 - Never hardcode munchkins-monorepo paths or agent names. Always derive from discovery.
 - Cross-package imports go through `@serranolabs.io/*` package names. No relative paths across workspace boundaries.
 - A new agent.ts MUST `registry.register(builder)` AND be side-effect-imported from the bundle's entry — both are required for the agent to appear in the CLI.
