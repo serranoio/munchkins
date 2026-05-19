@@ -43,7 +43,7 @@ The plan-funnel artifacts that produced this scaffold live under `docs/pages/int
 | Default agents | `packages/munchkins/agents/<name>/` (each agent owns its `<name>-agent.ts` + `prompts/`) |
 | Shared agent presets + system-prompt prelude | `packages/munchkins/agents/_shared/` |
 | Scenario harness entry | `scenarios/index.ts` |
-| Harness fixtures | `scenarios/fixtures/bugfix-agent-e2e/` |
+| Harness fixtures | `scenarios/fixtures/bugfix-agent-e2e/` (reused verbatim by `scenarios/dirty-main-e2e.ts`) |
 | Public docs landing | `docs/pages/index.mdx` |
 | Internal planning docs | `docs/pages/internal/` |
 | Rspress config | `docs/rspress.config.ts` |

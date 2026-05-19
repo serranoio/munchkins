@@ -57,20 +57,6 @@ async function commitFile(cwd: string, file: string, content: string, msg: strin
   await commitFiles(cwd, { [file]: content }, msg);
 }
 
-type FixerHandler = (opts: SpawnOptions, iter: number) => Promise<SpawnResult> | SpawnResult;
-
-class StubFixerCLI extends AgentCLI {
-  readonly name = "claude" as const;
-  invocations = 0;
-  constructor(private readonly handler: FixerHandler) {
-    super();
-  }
-  async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    this.invocations++;
-    return this.handler(opts, this.invocations);
-  }
-}
-
 class FailIfSpawnedCLI extends AgentCLI {
   readonly name = "claude" as const;
   invocations = 0;
@@ -159,14 +145,13 @@ describe("integrateBranch", () => {
     repo.cleanup();
   });
 
-  test("fixer resolves a single-file conflict and integration succeeds", async () => {
+  test("single-file content conflict auto-resolves via -X theirs (no fixer)", async () => {
     const { workdir, branch, file } = await setupSingleFileConflict(repo.path);
 
-    const cli = new StubFixerCLI(async (opts) => {
-      // Write valid merged content (no markers) and exit cleanly.
-      await Bun.write(join(opts.cwd, file), "export const x = 1; // merged\n");
-      return { exitCode: 0, output: "merged", durationMs: 1 };
-    });
+    // `rebaseAndResolve` uses `git rebase -X theirs` so simple content conflicts
+    // resolve to the agent's commits (the side being replayed). The fixer must
+    // not be spawned for this class of conflict.
+    const cli = new FailIfSpawnedCLI();
 
     const result = await integrateBranch({
       workdir,
@@ -179,60 +164,23 @@ describe("integrateBranch", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.fixerIters).toBe(1);
-    expect(cli.invocations).toBe(1);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+    expect(cli.invocations).toBe(0);
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("branch edit");
     expect(log).toContain("main edit");
 
+    // Agent wins on the overlapping line.
     const finalContent = await Bun.file(join(repo.path, file)).text();
-    expect(finalContent).toContain("merged");
+    expect(finalContent).toContain("// branch");
     expect(finalContent).not.toContain("<<<<<<<");
   });
 
-  test("fixer that leaves markers in every file fails with no-progress reason", async () => {
-    const { workdir, branch } = await setupSingleFileConflict(repo.path);
-
-    const cli = new StubFixerCLI(() => {
-      // Don't touch anything. Markers remain in the working tree.
-      return { exitCode: 0, output: "", durationMs: 1 };
-    });
-
-    const result = await integrateBranch({
-      workdir,
-      branch,
-      repoRoot: repo.path,
-      baseBranch: "main",
-      originalGoal: "fix it",
-      cli,
-      postFixChecks: [],
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toMatch(/left markers in every/);
-      expect(result.fixerIters).toBe(1);
-    }
-
-    // main should not have advanced.
-    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
-    expect(log).not.toContain("branch edit");
-  });
-
-  test("partial progress: outer loop re-prompts fixer on remaining unresolved file", async () => {
+  test("two-file content conflicts both auto-resolve to agent via -X theirs", async () => {
     const { workdir, branch, fileA, fileB } = await setupTwoFileConflict(repo.path);
 
-    const cli = new StubFixerCLI(async (opts, iter) => {
-      if (iter === 1) {
-        // Resolve only A; leave B with its conflict markers untouched.
-        await Bun.write(join(opts.cwd, fileA), "export const a = 1; // merged\n");
-      } else if (iter === 2) {
-        // Resolve B on the second invocation.
-        await Bun.write(join(opts.cwd, fileB), "export const b = 1; // merged\n");
-      }
-      return { exitCode: 0, output: "", durationMs: 1 };
-    });
+    const cli = new FailIfSpawnedCLI();
 
     const result = await integrateBranch({
       workdir,
@@ -245,37 +193,15 @@ describe("integrateBranch", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.fixerIters).toBe(2);
-    expect(cli.invocations).toBe(2);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+    expect(cli.invocations).toBe(0);
 
     const finalA = await Bun.file(join(repo.path, fileA)).text();
     const finalB = await Bun.file(join(repo.path, fileB)).text();
-    expect(finalA).toContain("merged");
-    expect(finalB).toContain("merged");
+    expect(finalA).toContain("// branch");
+    expect(finalB).toContain("// branch");
     expect(finalA).not.toContain("<<<<<<<");
     expect(finalB).not.toContain("<<<<<<<");
-  });
-
-  test("fixer CLI non-zero exit aborts with a CLI-exited reason", async () => {
-    const { workdir, branch } = await setupSingleFileConflict(repo.path);
-
-    const cli = new StubFixerCLI(() => ({ exitCode: 1, output: "boom", durationMs: 1 }));
-
-    const result = await integrateBranch({
-      workdir,
-      branch,
-      repoRoot: repo.path,
-      baseBranch: "main",
-      originalGoal: "fix it",
-      cli,
-      postFixChecks: [],
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toMatch(/CLI exited/);
-      expect(result.fixerIters).toBe(1);
-    }
   });
 
   test("clean rebase does not invoke the fixer", async () => {
@@ -301,6 +227,240 @@ describe("integrateBranch", () => {
 
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
     expect(log).toContain("fresh feature");
+  });
+});
+
+const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
+
+async function snapshotCommits(repoPath: string): Promise<string[]> {
+  const log = (await $`git log --pretty=%H%x09%s main`.cwd(repoPath).quiet())
+    .text()
+    .split("\n")
+    .filter(Boolean);
+  return log
+    .filter((line) => line.split("\t")[1]?.startsWith(SNAPSHOT_MSG_PREFIX))
+    .map((line) => line.split("\t")[0]);
+}
+
+async function fileAtCommit(repoPath: string, sha: string, path: string): Promise<string> {
+  return (await $`git show ${`${sha}:${path}`}`.cwd(repoPath).quiet()).text();
+}
+
+describe("integrateBranch dirty-repoRoot matrix", () => {
+  let repo: Repo;
+
+  beforeEach(async () => {
+    repo = await createRepo();
+  });
+
+  afterEach(() => {
+    repo.cleanup();
+  });
+
+  test("D1: unstaged tracked modification, no overlap with agent diff", async () => {
+    // Pre-commit a tracked file on main that the agent will NOT touch.
+    await commitFile(repo.path, "README.md", "# original\n", "add readme");
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    // Dirty the tracked file on repoRoot — unstaged.
+    await Bun.write(join(repo.path, "README.md"), "# dirty edit\n");
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D1",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    const snapshots = await snapshotCommits(repo.path);
+    expect(snapshots.length).toBe(1);
+    expect(await fileAtCommit(repo.path, snapshots[0], "README.md")).toBe("# dirty edit\n");
+
+    // Working tree: agent's commit landed; README carries the snapshot content.
+    expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
+    expect(await Bun.file(join(repo.path, "README.md")).text()).toBe("# dirty edit\n");
+
+    // main HEAD descends from snapshot AND from branch tip.
+    const isAncestor = await $`git merge-base --is-ancestor ${snapshots[0]} HEAD`
+      .cwd(repo.path)
+      .nothrow()
+      .quiet();
+    expect(isAncestor.exitCode).toBe(0);
+    const branchAncestor = await $`git merge-base --is-ancestor ${branch} HEAD`
+      .cwd(repo.path)
+      .nothrow()
+      .quiet();
+    expect(branchAncestor.exitCode).toBe(0);
+  });
+
+  test("D2: unstaged tracked modification overlapping an agent-modified file", async () => {
+    // Pre-commit a file that the AGENT will modify.
+    await commitFile(repo.path, "src/math.ts", "export const v = 0;\n", "seed math");
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "src/math.ts", "export const v = 1; // agent\n", "agent: bump v");
+
+    // Dirty the SAME file on repoRoot — overlap forces the snapshot commit's
+    // version to lose to the agent during rebase (-X theirs).
+    await Bun.write(join(repo.path, "src/math.ts"), "export const v = 99; // user dirty\n");
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D2",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    // Working tree: agent wins on overlap.
+    const finalMath = await Bun.file(join(repo.path, "src/math.ts")).text();
+    expect(finalMath).toContain("// agent");
+    expect(finalMath).not.toContain("user dirty");
+    expect(finalMath).not.toContain("<<<<<<<");
+
+    // Snapshot commit still records the operator's dirty content.
+    const snapshots = await snapshotCommits(repo.path);
+    expect(snapshots.length).toBe(1);
+    expect(await fileAtCommit(repo.path, snapshots[0], "src/math.ts")).toContain("user dirty");
+  });
+
+  test("D3: staged-but-not-committed change, no overlap", async () => {
+    await commitFile(repo.path, "notes.md", "# notes\n", "add notes");
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    // Stage a change to a tracked file, but do not commit it.
+    await Bun.write(join(repo.path, "notes.md"), "# notes (staged edit)\n");
+    await $`git add notes.md`.cwd(repo.path).env(gitEnv()).quiet();
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D3",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    const snapshots = await snapshotCommits(repo.path);
+    expect(snapshots.length).toBe(1);
+    expect(await fileAtCommit(repo.path, snapshots[0], "notes.md")).toBe("# notes (staged edit)\n");
+
+    // Working tree carries both the snapshot's notes and the agent's fresh file.
+    expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
+    expect(await Bun.file(join(repo.path, "notes.md")).text()).toBe("# notes (staged edit)\n");
+  });
+
+  test("D4: untracked file name-colliding with an agent-created file", async () => {
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(
+      workdir,
+      "fresh.ts",
+      "export const fresh = 1; // agent\n",
+      "agent creates fresh",
+    );
+
+    // Create an UNTRACKED file at the same path on repoRoot. Without the
+    // snapshot pre-flight, `git merge --ff-only` would refuse to overwrite an
+    // untracked file. The pre-flight stages and commits it, then -X theirs lets
+    // the agent's version win during rebase.
+    await Bun.write(join(repo.path, "fresh.ts"), "// user untracked\n");
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D4",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    // Agent wins in the working tree.
+    const finalFresh = await Bun.file(join(repo.path, "fresh.ts")).text();
+    expect(finalFresh).toContain("// agent");
+    expect(finalFresh).not.toContain("user untracked");
+
+    // Snapshot captured the original untracked content (because `git add -A`
+    // stages untracked files).
+    const snapshots = await snapshotCommits(repo.path);
+    expect(snapshots.length).toBe(1);
+    expect(await fileAtCommit(repo.path, snapshots[0], "fresh.ts")).toBe("// user untracked\n");
+  });
+
+  test("D5: mix of unstaged + staged + untracked all captured in one snapshot", async () => {
+    // Two pre-existing files on main — one for the unstaged dirty edit, one for
+    // the staged dirty edit. The untracked file is created fresh.
+    await commitFiles(
+      repo.path,
+      {
+        "unstaged.md": "# unstaged base\n",
+        "staged.md": "# staged base\n",
+      },
+      "seed mixed",
+    );
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "feature.ts", "export const f = 1;\n", "agent feature");
+
+    // D1 piece: unstaged tracked modification.
+    await Bun.write(join(repo.path, "unstaged.md"), "# unstaged DIRTY\n");
+    // D3 piece: staged change.
+    await Bun.write(join(repo.path, "staged.md"), "# staged DIRTY\n");
+    await $`git add staged.md`.cwd(repo.path).env(gitEnv()).quiet();
+    // D4 piece: untracked file (no name collision this time — just preserve it).
+    await Bun.write(join(repo.path, "scratch.txt"), "scratch content\n");
+
+    const cli = new FailIfSpawnedCLI();
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D5",
+      cli,
+      postFixChecks: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
+
+    const snapshots = await snapshotCommits(repo.path);
+    expect(snapshots.length).toBe(1);
+    const sha = snapshots[0];
+
+    // All three dirty pieces recoverable from the single snapshot.
+    expect(await fileAtCommit(repo.path, sha, "unstaged.md")).toBe("# unstaged DIRTY\n");
+    expect(await fileAtCommit(repo.path, sha, "staged.md")).toBe("# staged DIRTY\n");
+    expect(await fileAtCommit(repo.path, sha, "scratch.txt")).toBe("scratch content\n");
+
+    // Agent's commit also landed on main.
+    expect(await Bun.file(join(repo.path, "feature.ts")).text()).toContain("f = 1");
   });
 });
 
@@ -336,13 +496,10 @@ describe("integrateMerge strategy", () => {
     expect(log).toContain("fresh feature");
   });
 
-  test("conflicting setup with stub fixer resolves and integrates (I2)", async () => {
+  test("integrateMerge auto-resolves content conflict to agent via -X theirs (I2)", async () => {
     const { workdir, branch, file } = await setupSingleFileConflict(repo.path);
 
-    const cli = new StubFixerCLI(async (opts) => {
-      await Bun.write(join(opts.cwd, file), "export const x = 1; // merged\n");
-      return { exitCode: 0, output: "", durationMs: 1 };
-    });
+    const cli = new FailIfSpawnedCLI();
 
     const result = await integrateMerge().run({
       workdir,
@@ -355,10 +512,10 @@ describe("integrateMerge strategy", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.fixerIters).toBe(1);
+    if (result.ok) expect(result.fixerIters).toBe(0);
 
     const finalContent = await Bun.file(join(repo.path, file)).text();
-    expect(finalContent).toContain("merged");
+    expect(finalContent).toContain("// branch");
     expect(finalContent).not.toContain("<<<<<<<");
   });
 });

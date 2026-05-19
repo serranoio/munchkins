@@ -18,6 +18,7 @@ The harness owns **exactly one** deep scenario: S7. This is an explicit exceptio
 | PRD ID | E2E ID | In Harness? | Verification |
 |--------|--------|-------------|--------------|
 | S7 | `bugfix-agent-e2e` | ✓ | `bun run scenario` |
+| S7+ (dirty-tree tolerance) | `dirty-main-e2e` | ✓ | `bun run scenario` — parameterized over D1/D2/D3/D4/D5 |
 | S1, S3, S4, S5, S6 | — | ✗ | Direct shell, asserted in `ci.yml` `test` job |
 | S2, S8 | — | ✗ | Manual (browser) |
 | S9, S10, S11, S12 | — | ✗ | Real GitHub Actions run |

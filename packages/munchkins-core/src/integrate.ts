@@ -84,7 +84,12 @@ export async function rebaseAndResolve(
   };
 
   say(`rebase: onto ${baseBranch}`);
-  let rebase = await $`git rebase ${baseBranch}`.cwd(workdir).nothrow().quiet();
+  // `-X theirs` resolves content conflicts in favor of the side being replayed
+  // (the agent's commits). This lets `integrateBranch`'s dirty-tree pre-flight
+  // snapshot commit lose to the agent on overlap, so the rebase + ff-merge
+  // path completes without manual fixer involvement. For clean rebases the
+  // flag is a no-op.
+  let rebase = await $`git rebase -X theirs ${baseBranch}`.cwd(workdir).nothrow().quiet();
 
   let fixerIters = 0;
 
@@ -203,6 +208,9 @@ export type IntegrateResult = RebaseAndResolveResult;
  * works.
  */
 export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
+  const snapshotResult = await snapshotDirtyRepoRoot(opts);
+  if (snapshotResult && !snapshotResult.ok) return snapshotResult;
+
   const r = await rebaseAndResolve(opts);
   if (!r.ok) return r;
 
@@ -383,6 +391,55 @@ async function createGitlabMR(
       .nothrow()
       .quiet();
   return parseCreateResult("glab mr create", r);
+}
+
+/**
+ * If `repoRoot` has any dirty/staged/untracked content, stage all of it and
+ * commit it on `baseBranch` as a single snapshot. Without this pre-flight the
+ * subsequent `git merge --ff-only` would refuse (dirty tracked changes) or the
+ * untracked file would collide with an agent-created path. The snapshot commit
+ * is the recovery anchor: the user can find it via
+ * `git log --grep="munchkins: pre-merge snapshot"` and resurrect individual
+ * files with `git show <sha>:<path>`.
+ *
+ * Returns `undefined` when `repoRoot` was already clean (the caller proceeds
+ * with the existing rebase + ff-merge path unchanged). Returns an
+ * `IntegrateResult` only on failure.
+ */
+async function snapshotDirtyRepoRoot(opts: IntegrateOptions): Promise<IntegrateResult | undefined> {
+  const dirty = (await $`git status --porcelain`.cwd(opts.repoRoot).quiet().nothrow()).stdout
+    .toString()
+    .trim();
+  if (dirty.length === 0) return undefined;
+
+  const msg = `munchkins: pre-merge snapshot of dirty repoRoot @ ${Date.now()}`;
+  const addResult = await $`git add -A`.cwd(opts.repoRoot).nothrow().quiet();
+  if (addResult.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `pre-merge stage failed: ${addResult.stderr.toString().slice(-500)}`,
+      fixerIters: 0,
+    };
+  }
+
+  const commitResult =
+    await $`git -c user.name=munchkins -c user.email=munchkins@local commit -m ${msg}`
+      .cwd(opts.repoRoot)
+      .nothrow()
+      .quiet();
+  if (commitResult.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `pre-merge snapshot commit failed: ${commitResult.stderr.toString().slice(-500)}`,
+      fixerIters: 0,
+    };
+  }
+
+  const sha = (await $`git rev-parse --short HEAD`.cwd(opts.repoRoot).quiet()).stdout
+    .toString()
+    .trim();
+  opts.log?.(`integrate: repoRoot was dirty; committed snapshot ${sha}`);
+  return undefined;
 }
 
 async function listConflictedFiles(cwd: string): Promise<string[]> {
