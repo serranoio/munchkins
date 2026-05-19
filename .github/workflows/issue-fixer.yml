@@ -1,0 +1,35 @@
+name: issue-fixer
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: issue-fixer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  tick:
+    name: tick
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Run issue-fixer tick
+        env:
+          # Required for child munchkins to invoke `claude`. Operator must set
+          # this secret at the repo level; absence fails fast in the agent step.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # `gh` picks this up automatically for both reads and writes.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run munchkins issue-fixer

@@ -84,6 +84,7 @@ The bundle (`@serranolabs.io/munchkins`) registers two default agents on import.
 | `bug-fix` | Locates the root cause of a described bug and applies a minimal fix; runs a post-fix refactor pass on touched files. |
 | `refactor` | Refactors a target for DRY, naming, decomposition, or clarity, behavior-preserving. |
 | `director` | Cron-driven orchestrator that triages, plans, and dispatches work via other munchkins. Requires `PURPOSE.md` at the repo root. |
+| `issue-fixer` | Cron-driven munchkin that scans `bot:fix-me`-labeled GitHub issues and dispatches `bug-fix` / `refactor` / `feat-small` to land a PR. Wired locally via `.cron()` and in CI via `.github/workflows/issue-fixer.yml`. |
 
 Invocation:
 
