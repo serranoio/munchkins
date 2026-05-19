@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Analyzed the staged diff and produced a summary.\n\n{\"commitMessage\": \"fix(math): return a + b instead of a - b\", \"markdown\": \"**Goal:** Restore correct addition behavior in `add(a, b)`.\\n\\n**Outcome:** Edits made by the agent were left uncommitted in the worktree (matching real-agent behavior). The summary-writer phase stages and commits them in a single docs(changelog) commit.\\n\\n**Files changed:**\\n- `src/math.ts` — return a + b\\n- `src/math.test.ts` — regression test\"}",
+  "durationMs": 0
+}

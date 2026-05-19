@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Bug identified in src/math.ts. Rewriting the add function to return a + b. (mock response)",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": "src/math.ts",
+      "content": "export function add(a: number, b: number): number {\n  return a + b;\n}\n"
+    }
+  ]
+}

@@ -40,13 +40,22 @@ let nextIndex = 0;
 // which queue spawnClaudeMock consumes; nextIndex is reset on bucket switch.
 let bucketFiles: Map<string, string[]> | undefined;
 let activeBucket: string | undefined;
+// When true, the mock skips writing the marker file AND skips the auto-commit.
+// This mirrors real-agent behavior: each step's edits sit uncommitted in the
+// worktree, and the summary-writer phase is what actually stages and commits.
+// Used by scenarios that need to exercise the issue #1 codepath end-to-end.
+let noMockCommit = false;
 
 const SLUG_OUTPUT = "scenario-bug-fix";
 
-export function configureMock(dir: string, opts?: { buckets?: string[] }): void {
+export function configureMock(
+  dir: string,
+  opts?: { buckets?: string[]; noMockCommit?: boolean },
+): void {
   responsesDir = dir;
   callLog.length = 0;
   nextIndex = 0;
+  noMockCommit = opts?.noMockCommit ?? false;
 
   if (opts?.buckets && opts.buckets.length > 0) {
     bucketFiles = new Map();
@@ -120,6 +129,11 @@ export async function spawnClaudeMock(opts: {
   if (parsed.writeFiles && parsed.writeFiles.length > 0) {
     materializeFixtureFiles(opts.cwd, parsed.writeFiles);
   }
+
+  // Real-agent-mode: the mock's only side effect is materializing writeFiles
+  // (uncommitted, just like a real agent's edits). No marker, no auto-commit.
+  // The summary-writer phase is what's expected to stage + commit.
+  if (noMockCommit) return parsed;
 
   // Include the bucket name (if any) so markers from successive tick buckets
   // don't collide when their committed contents land on shared parent main.

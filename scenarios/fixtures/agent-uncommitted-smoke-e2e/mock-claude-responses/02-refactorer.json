@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Added a regression test next to the fix. (mock response)",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": "src/math.test.ts",
+      "content": "import { add } from \"./math.ts\";\n\nif (add(2, 3) !== 5) {\n  throw new Error(\"add regression: expected 5\");\n}\n"
+    }
+  ]
+}
