@@ -80,6 +80,29 @@ interface FullCleanupCheck {
   reason?: string;
 }
 
+interface CliRunResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function runMunchkinsCli(
+  argv: string[],
+  cwd: string,
+  env: Record<string, string | undefined>,
+): Promise<CliRunResult> {
+  const proc = Bun.spawn(["bun", munchkinsBin, ...argv], {
+    cwd,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const exitCode = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  return { exitCode, stdout, stderr };
+}
+
 async function assertResumeCompletedCleanup(
   sandboxPath: string,
   expectedMarkers: readonly string[],
@@ -287,25 +310,20 @@ async function run(): Promise<ScenarioResult> {
     }
 
     // Assertion 10b: the `munchkins resume --list` CLI surface also reports the run.
-    const listProc = Bun.spawn(["bun", munchkinsBin, "resume", "--list"], {
-      cwd: sandbox.path,
-      env: { ...process.env, MUNCHKINS_RUN_LOG_DIR: artifactDir },
-      stdout: "pipe",
-      stderr: "pipe",
+    const listRun = await runMunchkinsCli(["resume", "--list"], sandbox.path, {
+      ...process.env,
+      MUNCHKINS_RUN_LOG_DIR: artifactDir,
     });
-    const listExit = await listProc.exited;
-    const listStdout = await new Response(listProc.stdout).text();
-    const listStderr = await new Response(listProc.stderr).text();
-    if (listExit !== 0) {
+    if (listRun.exitCode !== 0) {
       return failResult(
         "execution",
-        `resume --list subprocess exited ${listExit}\n--- stdout ---\n${listStdout}\n--- stderr ---\n${listStderr}`,
+        `resume --list subprocess exited ${listRun.exitCode}\n--- stdout ---\n${listRun.stdout}\n--- stderr ---\n${listRun.stderr}`,
       );
     }
-    if (!listStdout.includes(stateAfterPhase1.runId)) {
+    if (!listRun.stdout.includes(stateAfterPhase1.runId)) {
       return failResult(
         "assertion",
-        `expected \`resume --list\` stdout to include runId ${stateAfterPhase1.runId}; got:\n${listStdout}`,
+        `expected \`resume --list\` stdout to include runId ${stateAfterPhase1.runId}; got:\n${listRun.stdout}`,
       );
     }
 
@@ -319,20 +337,12 @@ async function run(): Promise<ScenarioResult> {
       FAKE_CLAUDE_COUNTER_FILE: counterFile,
       MUNCHKINS_RUN_LOG_DIR: artifactDir,
     };
-    const proc = Bun.spawn(["bun", munchkinsBin, "resume", stateAfterPhase1.runId], {
-      cwd: sandbox.path,
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    const stdoutText = await new Response(proc.stdout).text();
-    const stderrText = await new Response(proc.stderr).text();
+    const resumeRun = await runMunchkinsCli(["resume", stateAfterPhase1.runId], sandbox.path, env);
 
-    if (exitCode !== 0) {
+    if (resumeRun.exitCode !== 0) {
       return failResult(
         "execution",
-        `resume subprocess exited ${exitCode}\n--- stdout ---\n${stdoutText}\n--- stderr ---\n${stderrText}`,
+        `resume subprocess exited ${resumeRun.exitCode}\n--- stdout ---\n${resumeRun.stdout}\n--- stderr ---\n${resumeRun.stderr}`,
       );
     }
 

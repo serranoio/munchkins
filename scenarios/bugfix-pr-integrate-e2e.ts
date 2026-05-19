@@ -24,7 +24,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -84,9 +83,9 @@ interface GhInvocation {
   flags: Record<string, string>;
 }
 
-function readGhLog(path: string): GhInvocation[] {
+async function readGhLog(path: string): Promise<GhInvocation[]> {
   if (!existsSync(path)) return [];
-  const text = readFileSync(path, "utf-8");
+  const text = await Bun.file(path).text();
   return text
     .split("\n")
     .filter((line) => line.trim() !== "")
@@ -188,7 +187,7 @@ async function run(): Promise<ScenarioResult> {
     }
 
     // `gh pr create` was invoked once with the right flags.
-    const ghInvocations = readGhLog(ghLogFile);
+    const ghInvocations = await readGhLog(ghLogFile);
     const prCreates = ghInvocations.filter(
       (inv) => inv.argv[0] === "pr" && inv.argv[1] === "create",
     );
