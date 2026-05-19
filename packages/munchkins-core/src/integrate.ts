@@ -20,6 +20,13 @@ The user prompt names the conflicted files and includes the original goal of the
 
 const FIXER_DISALLOWED_TOOLS = ["Bash"];
 
+/**
+ * Prefix on the synthetic commit `snapshotDirtyRepoRoot` writes when `repoRoot`
+ * was dirty pre-integration. The trailing `${Date.now()}` makes each snapshot
+ * commit unique; recovery tooling matches on this prefix.
+ */
+export const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
+
 export interface RebaseAndResolveOptions {
   /** Directory where the branch to rebase is currently checked out. Any git checkout works — worktree, clone, bind-mount, etc. */
   workdir: string;
@@ -412,7 +419,7 @@ async function snapshotDirtyRepoRoot(opts: IntegrateOptions): Promise<IntegrateR
     .trim();
   if (dirty.length === 0) return undefined;
 
-  const msg = `munchkins: pre-merge snapshot of dirty repoRoot @ ${Date.now()}`;
+  const msg = `${SNAPSHOT_MSG_PREFIX} ${Date.now()}`;
   const addResult = await $`git add -A`.cwd(opts.repoRoot).nothrow().quiet();
   if (addResult.exitCode !== 0) {
     return {

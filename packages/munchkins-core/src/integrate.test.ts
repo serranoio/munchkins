@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { AgentCLI, type SpawnOptions, type SpawnResult } from "./builder/agent-cli.js";
-import { detectProvider, integrateBranch, integrateMerge, integratePR } from "./integrate.js";
+import {
+  detectProvider,
+  integrateBranch,
+  integrateMerge,
+  integratePR,
+  SNAPSHOT_MSG_PREFIX,
+} from "./integrate.js";
 import { createWorktree } from "./worktree.js";
 
 const TEST_GIT_IDENTITY = {
@@ -229,8 +235,6 @@ describe("integrateBranch", () => {
     expect(log).toContain("fresh feature");
   });
 });
-
-const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
 
 async function snapshotCommits(repoPath: string): Promise<string[]> {
   const log = (await $`git log --pretty=%H%x09%s main`.cwd(repoPath).quiet())

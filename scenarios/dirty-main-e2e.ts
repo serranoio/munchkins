@@ -39,7 +39,13 @@ import { createSandbox } from "./lib/sandbox.js";
 
 const HARNESS_VERSION = "0.2.0";
 const SCENARIO_ID = "dirty-main-e2e";
+// Must stay in sync with `SNAPSHOT_MSG_PREFIX` in
+// `packages/munchkins-core/src/integrate.ts`. Kept local to avoid a static
+// import of internals from the scenario harness.
 const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
+// Path the bug-fix agent's mock writes during step 1; used both as an overlap
+// target for variants D2/D4 and as the post-integration marker assertion.
+const AGENT_MARKER_FILE = "__mock_0_01-bug-fix.txt";
 
 const HARNESS_TS = Date.now();
 const PRESERVE = process.argv.includes("--preserve");
@@ -97,13 +103,16 @@ const harnessGitEnv = {
   GIT_COMMITTER_EMAIL: "harness@local",
 } as const;
 
+function gitEnv(): Record<string, string | undefined> {
+  return { ...process.env, ...harnessGitEnv };
+}
+
 async function commitSeedFile(sandboxPath: string, path: string, content: string): Promise<void> {
   const abs = join(sandboxPath, path);
   mkdirSync(dirname(abs), { recursive: true });
   await Bun.write(abs, content);
-  const env = { ...process.env, ...harnessGitEnv };
-  await $`git add ${path}`.cwd(sandboxPath).env(env).quiet();
-  await $`git commit -m ${`seed ${path}`}`.cwd(sandboxPath).env(env).quiet();
+  await $`git add ${path}`.cwd(sandboxPath).env(gitEnv()).quiet();
+  await $`git commit -m ${`seed ${path}`}`.cwd(sandboxPath).env(gitEnv()).quiet();
 }
 
 const VARIANTS: Variant[] = [
@@ -122,16 +131,14 @@ const VARIANTS: Variant[] = [
     id: "D2",
     description: "unstaged tracked modification overlapping an agent-created file",
     setup: {
-      // The bug-fix agent's mock writes `__mock_0_01-bug-fix.txt` as part of
-      // step 1. Seeding the same path with different content forces the
+      // Seeding `AGENT_MARKER_FILE` with different content forces the
       // snapshot-commit's version to lose to the agent during rebase.
       async apply(sandboxPath) {
-        const overlap = "__mock_0_01-bug-fix.txt";
-        await commitSeedFile(sandboxPath, overlap, "seed content\n");
-        await Bun.write(join(sandboxPath, overlap), "user DIRTY content\n");
-        return [{ path: overlap, expectInSnapshot: "user DIRTY content\n" }];
+        await commitSeedFile(sandboxPath, AGENT_MARKER_FILE, "seed content\n");
+        await Bun.write(join(sandboxPath, AGENT_MARKER_FILE), "user DIRTY content\n");
+        return [{ path: AGENT_MARKER_FILE, expectInSnapshot: "user DIRTY content\n" }];
       },
-      overlapAgentPaths: ["__mock_0_01-bug-fix.txt"],
+      overlapAgentPaths: [AGENT_MARKER_FILE],
     },
   },
   {
@@ -141,10 +148,7 @@ const VARIANTS: Variant[] = [
       async apply(sandboxPath) {
         await commitSeedFile(sandboxPath, "notes.md", "# notes\n");
         await Bun.write(join(sandboxPath, "notes.md"), "# notes (staged dirty)\n");
-        await $`git add notes.md`
-          .cwd(sandboxPath)
-          .env({ ...process.env, ...harnessGitEnv })
-          .quiet();
+        await $`git add notes.md`.cwd(sandboxPath).env(gitEnv()).quiet();
         return [{ path: "notes.md", expectInSnapshot: "# notes (staged dirty)\n" }];
       },
     },
@@ -154,11 +158,10 @@ const VARIANTS: Variant[] = [
     description: "untracked file name-colliding with an agent-created file",
     setup: {
       async apply(sandboxPath) {
-        const overlap = "__mock_0_01-bug-fix.txt";
-        await Bun.write(join(sandboxPath, overlap), "untracked user content\n");
-        return [{ path: overlap, expectInSnapshot: "untracked user content\n" }];
+        await Bun.write(join(sandboxPath, AGENT_MARKER_FILE), "untracked user content\n");
+        return [{ path: AGENT_MARKER_FILE, expectInSnapshot: "untracked user content\n" }];
       },
-      overlapAgentPaths: ["__mock_0_01-bug-fix.txt"],
+      overlapAgentPaths: [AGENT_MARKER_FILE],
     },
   },
   {
@@ -171,10 +174,7 @@ const VARIANTS: Variant[] = [
 
         await Bun.write(join(sandboxPath, "unstaged.md"), "# unstaged DIRTY\n");
         await Bun.write(join(sandboxPath, "staged.md"), "# staged DIRTY\n");
-        await $`git add staged.md`
-          .cwd(sandboxPath)
-          .env({ ...process.env, ...harnessGitEnv })
-          .quiet();
+        await $`git add staged.md`.cwd(sandboxPath).env(gitEnv()).quiet();
         await Bun.write(join(sandboxPath, "scratch.txt"), "untracked scratch\n");
 
         return [
@@ -328,8 +328,9 @@ async function runVariant(
     }
 
     // Agent's primary marker file is on main.
-    const marker = "__mock_0_01-bug-fix.txt";
-    const tracked = (await $`git ls-files ${marker}`.cwd(sandbox.path).quiet()).text().trim();
+    const tracked = (await $`git ls-files ${AGENT_MARKER_FILE}`.cwd(sandbox.path).quiet())
+      .text()
+      .trim();
     if (!tracked) {
       return {
         id: variant.id,
@@ -337,7 +338,7 @@ async function runVariant(
         sandboxPath: sandbox.path,
         failure: {
           phase: "assertion",
-          message: `agent marker file ${marker} missing on main after integration`,
+          message: `agent marker file ${AGENT_MARKER_FILE} missing on main after integration`,
         },
       };
     }
