@@ -100,7 +100,7 @@ async function assertHappyPathCleanup(repoRoot: string): Promise<string | undefi
   }
 
   // The summary-writer phase commits `docs(changelog): <message>` after the
-  // agent's work commits but before the integrate ff-merge. Successful merge
+  // agent's work commits but before the integrate ff-merge. A successful merge
   // integration leaves that commit at the top of main.
   const headSubject = (await $`git log -1 --format=%s main`.cwd(repoRoot).quiet()).text().trim();
   if (!headSubject.startsWith("docs(changelog):")) {

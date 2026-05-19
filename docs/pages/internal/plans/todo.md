@@ -12,16 +12,16 @@ future regressions are testable against the same bar.
 non-fixture repo lands a real commit on `main` and the worktree is cleaned.
 
 **Acceptance:**
-- [ ] Run against this repo with a trivial brief (e.g. "add a blank line at the
+- [x] Run against this repo with a trivial brief (e.g. "add a blank line at the
   end of `docs/pages/index.mdx`"). Expect: agent succeeds, a single
   `docs(changelog): <message>` commit lands on `main`, worktree removed,
   agent branch deleted.
-- [ ] Repeat with `--integrate=pr`. Expect: GitHub PR opened, branch pushed,
+- [x] Repeat with `--integrate=pr`. Expect: GitHub PR opened, branch pushed,
   PR body includes the markdown summary.
-- [ ] Run against a dirty `repoRoot` (uncommitted edit to README). Expect:
+- [x] Run against a dirty `repoRoot` (uncommitted edit to README). Expect:
   agent succeeds, snapshot commit appears on main under author `munchkins`,
   `git show <sha>:README.md` recovers the original edit.
-- [ ] On forced failure (e.g. break the seed `lint` script), confirm the
+- [x] On forced failure (e.g. break the seed `lint` script), confirm the
   worktree + branch are preserved and `munchkins resume --list` surfaces the
   interrupted run.
 

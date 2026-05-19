@@ -286,10 +286,7 @@ async function run(): Promise<ScenarioResult> {
       );
     }
 
-    // Assertion 11: the public CLI surface `munchkins resume --list` (the form
-    // the todo entry's acceptance criterion names) must also surface the run.
-    // Exercises the command wiring in resume/command.ts, not just the library
-    // helper above.
+    // Assertion 10b: the `munchkins resume --list` CLI surface also reports the run.
     const listProc = Bun.spawn(["bun", munchkinsBin, "resume", "--list"], {
       cwd: sandbox.path,
       env: { ...process.env, MUNCHKINS_RUN_LOG_DIR: artifactDir },

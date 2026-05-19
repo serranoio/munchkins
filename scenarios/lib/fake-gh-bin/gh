@@ -8,12 +8,6 @@ if (!logFile) {
 }
 
 const argv = process.argv.slice(2);
-
-interface Invocation {
-  argv: string[];
-  flags: Record<string, string>;
-}
-
 const flags: Record<string, string> = {};
 for (let i = 0; i < argv.length; i++) {
   const tok = argv[i];
@@ -28,8 +22,7 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-const entry: Invocation = { argv, flags };
-appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
+appendFileSync(logFile, `${JSON.stringify({ argv, flags })}\n`);
 
 const counterFile = `${logFile}.counter`;
 let n = 1;

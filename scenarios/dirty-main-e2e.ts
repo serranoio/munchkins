@@ -285,9 +285,6 @@ async function runVariant(
     }
     const snapshotSha = snapshots[0];
 
-    // The snapshot commit must be authored as `munchkins` (set via
-    // `git -c user.name=munchkins -c user.email=munchkins@local commit` in
-    // integrate.ts::snapshotDirtyRepoRoot). Recovery tooling filters on author.
     const snapshotAuthor = (
       await $`git log -1 --format=%an ${snapshotSha}`.cwd(sandbox.path).quiet()
     )
