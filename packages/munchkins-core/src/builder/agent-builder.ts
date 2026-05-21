@@ -229,7 +229,7 @@ export class AgentBuilder {
   async run(): Promise<RunResult> {
     const repoRoot = (await $`git rev-parse --show-toplevel`.text()).trim();
 
-    if (process.env.__MUNCHKINS_OPT_dryRun === "true" && !this._handlesDryRun) {
+    if (isDryRunRequested() && !this._handlesDryRun) {
       this._printDescribe(repoRoot);
       return { worktreePath: "", branch: "", succeeded: true };
     }
@@ -389,7 +389,7 @@ export class AgentBuilder {
     // Dry-run skips summary writer + integration + teardown: agent steps did not
     // call Claude, so the worktree only holds deterministic-step artifacts; there
     // is no diff worth summarizing and nothing to merge.
-    const isDryRun = process.env.__MUNCHKINS_OPT_dryRun === "true";
+    const isDryRun = isDryRunRequested();
 
     // Summary writer phase — runs after main steps succeed, before integration.
     let commitMessage: string | undefined;
@@ -725,7 +725,7 @@ export class AgentBuilder {
     // because they opt out of the outer _printDescribe short-circuit. For those,
     // agent steps must still skip Claude — the prompts are already printed above;
     // the run log captures the resolved prompts with an empty response.
-    if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
+    if (isDryRunRequested()) {
       const durationMs = Date.now() - startTime;
       const emptyUsage = {
         inputTokens: 0,
@@ -923,6 +923,10 @@ function markStepInProgress(state: RunState, runLogDir: string, step: RunStateSt
 function markStepCompleted(state: RunState, runLogDir: string, step: RunStateStep): void {
   step.status = "completed";
   if (runLogDir) saveState(runLogDir, state);
+}
+
+function isDryRunRequested(): boolean {
+  return process.env.__MUNCHKINS_OPT_dryRun === "true";
 }
 
 function isSessionNotFound(r: { exitCode: number; output: string }): boolean {
