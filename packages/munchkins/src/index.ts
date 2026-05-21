@@ -79,11 +79,11 @@ export {
   worktreeExists,
 } from "./worktree.js";
 
+import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
 import { registry } from "./registry/index.js";
 import { registerResumeCommand } from "./resume/command.js";
 import { registerDaemonCommand } from "./scheduler/command.js";
 import { registerStatusCommand } from "./status/command.js";
-import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
 
 registerResumeCommand(registry);
 registerStatusCommand(registry);

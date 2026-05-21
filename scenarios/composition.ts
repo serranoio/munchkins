@@ -69,9 +69,7 @@ async function run(): Promise<ScenarioResult> {
     process.chdir(repoRoot);
 
     // Import the framework AFTER chdir so registry/builders pick up env from this dir.
-    const { AgentBuilder, Prompt, gitWorktreeSandbox } = await import(
-      "@serranolabs.io/munchkins"
-    );
+    const { AgentBuilder, Prompt, gitWorktreeSandbox } = await import("@serranolabs.io/munchkins");
 
     // Create two minimal builders. The Prompts here use inline user-message
     // text so we don't need fixture files on disk.

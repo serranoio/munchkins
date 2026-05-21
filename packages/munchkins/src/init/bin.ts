@@ -29,12 +29,14 @@ export interface RunInitOptions {
 export async function runInit(opts: RunInitOptions): Promise<void> {
   const pkgPath = join(opts.cwd, "package.json");
   if (!existsSync(pkgPath)) {
-    console.error(`✖ no package.json at ${opts.cwd} — run \`bunx munchkins-init\` from a repo root`);
+    console.error(
+      `✖ no package.json at ${opts.cwd} — run \`bunx munchkins-init\` from a repo root`,
+    );
     process.exit(1);
   }
 
   await _ensureAgentRegistry(opts.cwd, opts.templatePath);
-  await _ensureMunchkinsScript(opts.cwd, pkgPath);
+  await _ensureMunchkinsScript(pkgPath);
 
   _runSkillsInstall({
     cwd: opts.cwd,
@@ -58,7 +60,7 @@ async function _ensureAgentRegistry(cwd: string, templatePath: string): Promise<
   console.log(`agentRegistry.ts: wrote ${dest}`);
 }
 
-async function _ensureMunchkinsScript(cwd: string, pkgPath: string): Promise<void> {
+async function _ensureMunchkinsScript(pkgPath: string): Promise<void> {
   const pkg = (await Bun.file(pkgPath).json()) as Record<string, unknown>;
   const scripts = (pkg.scripts as Record<string, string> | undefined) ?? {};
   const desired = "bun run ./agentRegistry.ts";

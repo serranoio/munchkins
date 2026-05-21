@@ -51,10 +51,7 @@ const PRESERVE = process.argv.includes("--preserve");
 async function packFramework(intoDir: string): Promise<string> {
   // `bun pm pack --destination` writes the tarball into the given directory.
   // Default name for `@scope/name` is `scope-name-<version>.tgz`.
-  const result = await $`bun pm pack --destination ${intoDir}`
-    .cwd(pkgDir)
-    .quiet()
-    .nothrow();
+  const result = await $`bun pm pack --destination ${intoDir}`.cwd(pkgDir).quiet().nothrow();
   if (result.exitCode !== 0) {
     throw new Error(`bun pm pack failed: ${result.stderr.toString()}`);
   }
@@ -212,10 +209,7 @@ async function run(): Promise<ScenarioResult> {
     }
 
     // Step 8: run the stub agent end to end via --dry-run.
-    const stubRun = await $`bun run munchkins stub --dry-run`
-      .cwd(consumer)
-      .quiet()
-      .nothrow();
+    const stubRun = await $`bun run munchkins stub --dry-run`.cwd(consumer).quiet().nothrow();
     if (stubRun.exitCode !== 0) {
       return failResult(
         "execution",
