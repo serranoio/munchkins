@@ -29,17 +29,27 @@
     },
     "packages/munchkins": {
       "name": "@serranolabs.io/munchkins",
-      "version": "0.1.0",
+      "version": "0.1.3",
+      "bin": {
+        "munchkins": "./src/index.ts",
+      },
       "dependencies": {
         "@serranolabs.io/munchkins-core": "workspace:*",
       },
     },
     "packages/munchkins-core": {
       "name": "@serranolabs.io/munchkins-core",
-      "version": "0.1.0",
+      "version": "0.1.3",
       "dependencies": {
         "commander": "^12.0.0",
         "cron-parser": "^5.5.0",
+      },
+    },
+    "packages/serrano-munchkins": {
+      "name": "@serranolabs.io/serrano-munchkins",
+      "version": "0.0.0",
+      "dependencies": {
+        "@serranolabs.io/munchkins": "workspace:*",
       },
     },
   },
@@ -111,6 +121,8 @@
     "@serranolabs.io/munchkins": ["@serranolabs.io/munchkins@workspace:packages/munchkins"],
 
     "@serranolabs.io/munchkins-core": ["@serranolabs.io/munchkins-core@workspace:packages/munchkins-core"],
+
+    "@serranolabs.io/serrano-munchkins": ["@serranolabs.io/serrano-munchkins@workspace:packages/serrano-munchkins"],
 
     "@shikijs/core": ["@shikijs/core@4.0.2", "", { "dependencies": { "@shikijs/primitive": "4.0.2", "@shikijs/types": "4.0.2", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4", "hast-util-to-html": "^9.0.5" } }, "sha512-hxT0YF4ExEqB8G/qFdtJvpmHXBYJ2lWW7qTHDarVkIudPFE6iCIrqdgWxGn5s+ppkGXI0aEGlibI0PAyzP3zlw=="],
 
