@@ -152,7 +152,7 @@ async function run(): Promise<ScenarioResult> {
     const skillSrc = join(
       repoRoot,
       "packages",
-      "munchkins",
+      "serrano-munchkins",
       "skills",
       "munchkins-director",
       "SKILL.md",
@@ -163,7 +163,7 @@ async function run(): Promise<ScenarioResult> {
 
     process.chdir(sandbox.path);
 
-    await import("@serranolabs.io/munchkins");
+    await import("@serranolabs.io/serrano-munchkins");
     const { registry, runDaemon } = await import("@serranolabs.io/munchkins-core");
 
     const builder = registry.get("director");

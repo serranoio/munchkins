@@ -231,11 +231,11 @@ async function run(): Promise<ScenarioResult> {
 
     // Install the bug-fix skill into the sandbox so the agent's
     // `.withSkill("munchkins:bug-fix")` resolves against the sandboxed repo root,
-    // mirroring what `bun run munchkins skills install` would do for a user.
+    // mirroring what `bunx munchkins-init` would do for a user.
     const skillSrc = join(
       repoRoot,
       "packages",
-      "munchkins",
+      "serrano-munchkins",
       "skills",
       "munchkins-bug-fix",
       "SKILL.md",
@@ -248,7 +248,7 @@ async function run(): Promise<ScenarioResult> {
     process.env.__MUNCHKINS_OPT_userMessage = userMessagePath;
     process.chdir(sandbox.path);
 
-    await import("@serranolabs.io/munchkins");
+    await import("@serranolabs.io/serrano-munchkins");
     const { registry } = await import("@serranolabs.io/munchkins-core");
 
     const agent = registry.get("bug-fix");

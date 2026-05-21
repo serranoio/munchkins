@@ -228,7 +228,7 @@ async function runVariant(
     const skillSrc = join(
       repoRoot,
       "packages",
-      "munchkins",
+      "serrano-munchkins",
       "skills",
       "munchkins-bug-fix",
       "SKILL.md",
@@ -394,7 +394,7 @@ async function run(): Promise<ScenarioResult> {
 
   // Import the bundle once — registration is a one-time side effect; subsequent
   // imports are cache hits. The registry is process-wide.
-  await import("@serranolabs.io/munchkins");
+  await import("@serranolabs.io/serrano-munchkins");
   const { registry } = await import("@serranolabs.io/munchkins-core");
   const agent = registry.get("bug-fix");
   if (!agent) {

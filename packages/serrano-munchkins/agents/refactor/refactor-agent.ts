@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
 import {
   BRANCH_PREFIX_OPTION,
   DEFAULT_CHECKS,

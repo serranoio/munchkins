@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type OptionSchema, Prompt } from "@serranolabs.io/munchkins-core";
+import { type OptionSchema, Prompt } from "@serranolabs.io/munchkins";
 
 export function getAgentPromptsDir(importUrl: string): string {
   return join(dirname(fileURLToPath(importUrl)), "prompts");

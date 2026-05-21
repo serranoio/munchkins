@@ -17,19 +17,14 @@
   },
   "files": [
     "src",
-    "agents",
     "skills"
   ],
   "exports": {
-    ".": "./src/index.ts",
-    "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts",
-    "./agents/director": "./agents/director/director-agent.ts",
-    "./agents/feat-small": "./agents/feat-small/feat-small-agent.ts",
-    "./agents/refactor": "./agents/refactor/refactor-agent.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test src agents"
+    "test": "bun test src"
   },
   "dependencies": {
     "@serranolabs.io/munchkins-core": "workspace:*"

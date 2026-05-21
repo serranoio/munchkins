@@ -4,10 +4,10 @@ These guidelines are prepended to every default-agent system prompt in this repo
 
 ## Project facts
 
-- Bun + Turborepo monorepo. Three workspaces: `packages/munchkins-core` (framework), `packages/munchkins` (defaults bundle), `docs` (Rspress docs site).
+- Bun + Turborepo monorepo. Workspaces: `packages/munchkins` (framework), `packages/serrano-munchkins` (private dogfood — agents + skills), `docs` (Rspress docs site).
 - **Bun only.** Never invoke `npm install` or `pnpm install`. Use `bun install` / `bun add` / `bun run`. Lockfile is `bun.lock`.
-- Cross-package imports go through monorepo package names (`@serranolabs.io/munchkins-core`, `@serranolabs.io/munchkins`). No relative paths across workspace boundaries.
-- The scenario harness at `scenarios/` mocks Claude via `mock.module()` targeting `packages/munchkins-core/src/builder/spawn-claude.ts`. Don't change that file's exported shape (`spawnClaude` function returning `{ exitCode, output, durationMs }`) without updating the harness in lockstep.
+- Cross-package imports go through monorepo package names (`@serranolabs.io/munchkins`). No relative paths across workspace boundaries.
+- The scenario harness at `scenarios/` mocks Claude via `mock.module()` targeting `packages/munchkins/src/builder/spawn-claude.ts`. Don't change that file's exported shape (`spawnClaude` function returning `{ exitCode, output, durationMs }`) without updating the harness in lockstep.
 - Plan-funnel artifacts at `docs/pages/internal/{diagnosis,prd,scenario-testing-strategy,technology-decisions,plan}.md` are durable design records. Update them only when the design actually changes; do not edit them as scratchpads.
 
 ## Code rules

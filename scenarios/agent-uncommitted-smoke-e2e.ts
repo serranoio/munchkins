@@ -138,7 +138,7 @@ async function run(): Promise<ScenarioResult> {
     const skillSrc = join(
       repoRoot,
       "packages",
-      "munchkins",
+      "serrano-munchkins",
       "skills",
       "munchkins-bug-fix",
       "SKILL.md",
@@ -152,7 +152,7 @@ async function run(): Promise<ScenarioResult> {
     process.env.__MUNCHKINS_OPT_userMessage = userMessagePath;
     process.chdir(sandbox.path);
 
-    await import("@serranolabs.io/munchkins");
+    await import("@serranolabs.io/serrano-munchkins");
     const { registry } = await import("@serranolabs.io/munchkins-core");
 
     const agent = registry.get("bug-fix");

@@ -4,10 +4,10 @@
 // `bunx munchkins-init`. The framework package itself ships zero default
 // agents; the four agents below live in this private workspace.
 import { runCli } from "@serranolabs.io/munchkins";
-import "@serranolabs.io/munchkins/agents/bugfix";
-import "@serranolabs.io/munchkins/agents/director";
-import "@serranolabs.io/munchkins/agents/feat-small";
-import "@serranolabs.io/munchkins/agents/refactor";
+import "./agents/bugfix/bugfix-agent.js";
+import "./agents/director/director-agent.js";
+import "./agents/feat-small/feat-small-agent.js";
+import "./agents/refactor/refactor-agent.js";
 
 if (import.meta.main) {
   await runCli({ argv: process.argv, cwd: process.cwd(), env: process.env });

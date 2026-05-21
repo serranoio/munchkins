@@ -4,7 +4,7 @@
 //
 // `.thenRun()` strips sandbox / summaryWriter / integration so the composed
 // agent has a single, explicit story for those three concerns.
-import { AgentBuilder, gitWorktreeSandbox, Prompt } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt } from "@serranolabs.io/munchkins";
 import { defaultSummaryWriter } from "../_shared/presets.js";
 
 const a = new AgentBuilder("a", "fix the bug").add(

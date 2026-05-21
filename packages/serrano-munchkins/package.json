@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "agentRegistry.ts",
+  "exports": {
+    ".": "./agentRegistry.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test --pass-with-no-tests"
