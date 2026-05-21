@@ -299,7 +299,7 @@ This slice ships everything needed to verify S1 in CI on merge.
    ```ts
    import { dirname, join } from "node:path"
    import { fileURLToPath } from "node:url"
-   import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core"
+   import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins"
    import { GUIDELINES_PATH, defaultSummaryWriter } from "@serranolabs.io/munchkins/agents/_shared/presets"
 
    const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts")

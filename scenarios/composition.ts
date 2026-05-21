@@ -70,7 +70,7 @@ async function run(): Promise<ScenarioResult> {
 
     // Import the framework AFTER chdir so registry/builders pick up env from this dir.
     const { AgentBuilder, Prompt, gitWorktreeSandbox } = await import(
-      "@serranolabs.io/munchkins-core"
+      "@serranolabs.io/munchkins"
     );
 
     // Create two minimal builders. The Prompts here use inline user-message

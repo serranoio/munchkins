@@ -181,7 +181,7 @@ This is a CLI feature — no browser, no UI.
      ```ts
      import { dirname, join } from "node:path"
      import { fileURLToPath } from "node:url"
-     import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core"
+     import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins"
      import { GUIDELINES_PATH, defaultSummaryWriter } from "../_shared/presets.js"
 
      const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts")

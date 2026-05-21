@@ -16,7 +16,7 @@ Implementation-shaping forks resolved before `plan.md`. Each entry records the c
 
 **Chosen: (a) Bun's `mock.module()`.**
 
-The harness installs the mock at the top of `scenarios/index.ts` via `mock.module('@serranolabs.io/munchkins-core/builder/spawn-claude.ts', () => ({ spawnClaude: <mockFn> }))` BEFORE dynamic-importing the bugfix-agent constructor from `@serranolabs.io/munchkins/agents/bugfix`. **Module path amended per D13** — `spawn-claude.ts` now lives in `packages/munchkins-core/src/builder/`, not `packages/munchkins/src/builder/`. Production source is untouched.
+The harness installs the mock at the top of `scenarios/index.ts` via `mock.module('@serranolabs.io/munchkins/builder/spawn-claude.ts', () => ({ spawnClaude: <mockFn> }))` BEFORE dynamic-importing the bugfix-agent constructor from `@serranolabs.io/munchkins/agents/bugfix`. **Module path amended per D13** — `spawn-claude.ts` now lives in `packages/munchkins-core/src/builder/`, not `packages/munchkins/src/builder/`. Production source is untouched.
 
 Rejected:
 - (b) DI via `AgentBuilder` constructor option for the spawn-claude function — costs a multi-line edit to `agent-builder.ts`. The new constructor signature `(name, description?)` is unrelated and solves a different problem (CLI metadata, not test-time injection).
@@ -76,7 +76,7 @@ bun publish --cwd packages/munchkins-core   # publish framework first
 bun publish --cwd packages/munchkins        # then bundle (depends on -core)
 ```
 
-Both auth via the same `.npmrc` written from `${{ secrets.NPM_TOKEN }}`. Both packages declare `publishConfig.access: "public"` (T11). Topological order matters because the bundle's `dependencies["@serranolabs.io/munchkins-core"]` is set to the just-tagged version; publishing the bundle first would land a registry entry pointing at a non-existent dep version, breaking installs until `-core` lands.
+Both auth via the same `.npmrc` written from `${{ secrets.NPM_TOKEN }}`. Both packages declare `publishConfig.access: "public"` (T11). Topological order matters because the bundle's `dependencies["@serranolabs.io/munchkins"]` is set to the just-tagged version; publishing the bundle first would land a registry entry pointing at a non-existent dep version, breaking installs until `-core` lands.
 
 Rejected:
 - (b) `npm publish` — would be the only `npm` invocation in the repo, violating CLAUDE.md's Bun-only rule for no upside.
@@ -189,7 +189,7 @@ No fork present — this follows directly from "all-Bun + deterministic CI."
 }
 ```
 
-Required because both `@serranolabs.io/munchkins-core` and `@serranolabs.io/munchkins` are scoped packages and scoped packages default to private on npm (which fails on free npm accounts and for unintended-private publishes).
+Required because both `@serranolabs.io/munchkins` and `@serranolabs.io/munchkins` are scoped packages and scoped packages default to private on npm (which fails on free npm accounts and for unintended-private publishes).
 
 No fork — required by S12.
 
@@ -199,7 +199,7 @@ No fork — required by S12.
 
 ```
 packages/
-├── munchkins-core/       # @serranolabs.io/munchkins-core — framework
+├── munchkins-core/       # @serranolabs.io/munchkins — framework
 │   ├── package.json      # name, version, exports, publishConfig
 │   ├── tsconfig.json     # extends ../../tsconfig.json
 │   └── src/
@@ -217,7 +217,7 @@ packages/
 │       ├── spawn.ts
 │       └── changelog.ts
 └── munchkins/            # @serranolabs.io/munchkins — defaults bundle
-    ├── package.json      # depends on @serranolabs.io/munchkins-core: "workspace:*"
+    ├── package.json      # depends on @serranolabs.io/munchkins: "workspace:*"
     ├── tsconfig.json
     ├── src/
     │   └── index.ts                      # re-exports + side-effect registers default agents
@@ -235,7 +235,7 @@ The bundle's `package.json` declares:
 ```json
 {
   "dependencies": {
-    "@serranolabs.io/munchkins-core": "workspace:*"
+    "@serranolabs.io/munchkins": "workspace:*"
   }
 }
 ```
@@ -463,7 +463,7 @@ The sample bin script (NOT a published surface — referenced only in `AGENTS.md
 
 ```ts
 #!/usr/bin/env bun
-import { registry } from "@serranolabs.io/munchkins-core";
+import { registry } from "@serranolabs.io/munchkins";
 import "@serranolabs.io/munchkins"; // side-effect: registers default agents
 await registry.cli().parseAsync(process.argv);
 ```
@@ -483,7 +483,7 @@ Each decision above maps to a concrete artifact the plan must produce. Entries m
 
 | Decision | Plan artifact / slice impact |
 |----------|------------------------------|
-| T1 (amended) | `scenarios/index.ts` calls `mock.module('@serranolabs.io/munchkins-core/builder/spawn-claude.ts', ...)` before the dynamic import of `@serranolabs.io/munchkins/agents/bugfix`. |
+| T1 (amended) | `scenarios/index.ts` calls `mock.module('@serranolabs.io/munchkins/builder/spawn-claude.ts', ...)` before the dynamic import of `@serranolabs.io/munchkins/agents/bugfix`. |
 | T2 | `.github/workflows/docs-publish.yml` uses `actions/configure-pages` + `actions/deploy-pages`. `rspress.config.ts` sets `base` per-env. |
 | T3 | `publish.yml` trigger: `tags: ['v*']`. |
 | T4 | Root `biome.json` + `devDependencies.@biomejs/biome`. CI uses `biome ci .`. |

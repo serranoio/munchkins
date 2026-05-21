@@ -40,11 +40,11 @@ packages/<your-bundle>/
 Then in `src/index.ts`:
 
 ```ts
-export * from "@serranolabs.io/munchkins-core";
+export * from "@serranolabs.io/munchkins";
 import "../agents/<your-agent>/<your-agent>-agent.js";
 
 if (import.meta.main) {
-  const { registry } = await import("@serranolabs.io/munchkins-core");
+  const { registry } = await import("@serranolabs.io/munchkins");
   // … same dispatch table as packages/munchkins/src/index.ts
   await registry.cli().parseAsync(process.argv);
 }
@@ -57,7 +57,7 @@ The side-effect import is what causes `registry.register()` to fire. Without it 
 Every method on `AgentBuilder` is part of the public API. Construct one, chain whatever you need, register the result.
 
 ```ts
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
 
 const builder = new AgentBuilder("your-agent", "Short description.", gitWorktreeSandbox());
 ```
@@ -80,7 +80,7 @@ const builder = new AgentBuilder("your-agent", "Short description.", gitWorktree
 ### Example: a single-step agent
 
 ```ts
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
 import { DEFAULT_CHECKS, defaultFixer, defaultSummaryWriter, GUIDELINES_PATH } from "../_shared/presets.js";
 
 const builder = new AgentBuilder("dep-bump", "Bump a single npm dep and run the gate.", gitWorktreeSandbox())
@@ -119,7 +119,7 @@ The CLI auto-converts camelCase option names to kebab-case flags: `userMessage` 
 A `Prompt` is a system prompt + a user prompt fragment list. The system can be one or more files; the user prompt can mix literal text and option-driven fragments.
 
 ```ts
-import { Prompt } from "@serranolabs.io/munchkins-core";
+import { Prompt } from "@serranolabs.io/munchkins";
 
 const prompt = new Prompt("./prompts/agent-guidelines.md") // optional first system path
   .withSystem("./prompts/your-agent.md")                    // append another system path
@@ -158,7 +158,7 @@ Options reach the agent via environment variables prefixed with `__MUNCHKINS_OPT
 registry.register(builder);
 ```
 
-Call it once per agent at module top level. The registry rejects duplicate names. The `registry` export is a singleton — every package importing `@serranolabs.io/munchkins-core` shares it, which is why a side-effect import is enough to wire your agent into `--help`.
+Call it once per agent at module top level. The registry rejects duplicate names. The `registry` export is a singleton — every package importing `@serranolabs.io/munchkins` shares it, which is why a side-effect import is enough to wire your agent into `--help`.
 
 If you're testing or composing agents and need to overwrite an existing registration, `registry.replace(builder)` swaps without throwing. Use sparingly.
 
@@ -190,7 +190,7 @@ A `rehydrate` implementation is required for `munchkins resume` to work against 
 The agent's branch has to land somewhere. Strategy resolution order: operator's `--integrate` flag → author's `.integrate(strategy)` declaration → run-layer default (`integrateMerge`).
 
 ```ts
-import { integrateMerge, integratePR } from "@serranolabs.io/munchkins-core";
+import { integrateMerge, integratePR } from "@serranolabs.io/munchkins";
 
 builder.integrate(integrateMerge());                                // explicit default
 builder.integrate(integratePR());                                   // open a PR
@@ -240,7 +240,7 @@ export function defaultSummaryWriter(): Prompt {
 `thenRun()` concatenates two builders into a new one and **strips** the sandbox, summary writer, and integration. The caller must reattach them. Reference example: `packages/munchkins/agents/bugfix-then-refactor/bugfix-then-refactor-agent.ts`:
 
 ```ts
-import { AgentBuilder, gitWorktreeSandbox, Prompt } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt } from "@serranolabs.io/munchkins";
 import { defaultSummaryWriter } from "../_shared/presets.js";
 
 const a = new AgentBuilder("a", "fix the bug").add(
@@ -311,7 +311,7 @@ A custom `dep-bump` agent that takes an inline target version, runs a single Cla
 
 ```ts
 import { join } from "node:path";
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
 import {
   DEFAULT_CHECKS,
   defaultFixer,

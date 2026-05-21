@@ -40,7 +40,7 @@ import { createSandbox } from "./lib/sandbox.js";
 const HARNESS_VERSION = "0.2.0";
 const SCENARIO_ID = "dirty-main-e2e";
 // Must stay in sync with `SNAPSHOT_MSG_PREFIX` in
-// `packages/munchkins-core/src/integrate.ts`. Kept local to avoid a static
+// `packages/munchkins/src/integrate.ts`. Kept local to avoid a static
 // import of internals from the scenario harness.
 const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
 // Path the bug-fix agent's mock writes during step 1; used both as an overlap
@@ -61,7 +61,7 @@ const spawnClaudeAbsPath = join(
   harnessDir,
   "..",
   "packages",
-  "munchkins-core",
+  "munchkins",
   "src",
   "builder",
   "spawn-claude.ts",
@@ -395,7 +395,7 @@ async function run(): Promise<ScenarioResult> {
   // Import the bundle once — registration is a one-time side effect; subsequent
   // imports are cache hits. The registry is process-wide.
   await import("@serranolabs.io/serrano-munchkins");
-  const { registry } = await import("@serranolabs.io/munchkins-core");
+  const { registry } = await import("@serranolabs.io/munchkins");
   const agent = registry.get("bug-fix");
   if (!agent) {
     return {

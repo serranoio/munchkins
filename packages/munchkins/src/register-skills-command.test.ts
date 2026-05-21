@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AgentRegistry } from "@serranolabs.io/munchkins-core";
+import { AgentRegistry } from "@serranolabs.io/munchkins";
 import { registerSkillsCommand } from "./register-skills-command.js";
 
 describe("registerSkillsCommand", () => {

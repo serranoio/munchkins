@@ -46,7 +46,7 @@ const spawnClaudeAbsPath = join(
   harnessDir,
   "..",
   "packages",
-  "munchkins-core",
+  "munchkins",
   "src",
   "builder",
   "spawn-claude.ts",
@@ -153,7 +153,7 @@ async function run(): Promise<ScenarioResult> {
     process.chdir(sandbox.path);
 
     await import("@serranolabs.io/serrano-munchkins");
-    const { registry } = await import("@serranolabs.io/munchkins-core");
+    const { registry } = await import("@serranolabs.io/munchkins");
 
     const agent = registry.get("bug-fix");
     if (!agent) {

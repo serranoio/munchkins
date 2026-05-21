@@ -109,7 +109,7 @@ Read whichever apply so generated files comply on first try:
 
 #### 1e. Identify primary language
 
-Determined by which manifest exists (`package.json` → TS/JS, `pyproject.toml` → Python, `go.mod` → Go). Used to tailor mandate style guidelines. Polyglot repos: pick the language of the agents directory (likely TS — munchkins-core is TS).
+Determined by which manifest exists (`package.json` → TS/JS, `pyproject.toml` → Python, `go.mod` → Go). Used to tailor mandate style guidelines. Polyglot repos: pick the language of the agents directory (likely TS — the framework is TS).
 
 #### 1f. Detect package manager
 
@@ -117,7 +117,7 @@ From lockfile presence: `bun.lock` → bun, `pnpm-lock.yaml` → pnpm, `yarn.loc
 
 #### 1g. Detect daemon wiring
 
-Read the bundle's entry file (`<bundle-package>/src/index.ts` — the same file that holds the side-effect imports). Look for a daemon dispatch: a branch on `argv[2] === "daemon"` (or analogous) that calls `runDaemon()` from `@serranolabs.io/munchkins-core`.
+Read the bundle's entry file (`<bundle-package>/src/index.ts` — the same file that holds the side-effect imports). Look for a daemon dispatch: a branch on `argv[2] === "daemon"` (or analogous) that calls `runDaemon()` from `@serranolabs.io/munchkins`.
 
 Record one of three states:
 - **wired** — the daemon branch is present.
@@ -132,8 +132,8 @@ The runtime location of `SKILL.md` files differs by context. The skill MUST dete
 
 **Mode detection:**
 
-- **Source-repo mode** — cwd is the `@serranolabs.io/munchkins` framework's own monorepo. Signal: `packages/munchkins-core/` workspace exists, OR `packages/munchkins/package.json` declares `name: "@serranolabs.io/munchkins"`. In this mode, you're authoring a *default* skill that ships as a template inside the npm package. Skills live at `packages/munchkins/skills/<name>/SKILL.md` (the template location).
-- **Consumer-repo mode** — cwd consumes `@serranolabs.io/munchkins` via npm. Signal: `@serranolabs.io/munchkins` in `package.json` deps AND `packages/munchkins-core/` does NOT exist. In this mode, you're authoring a *project-specific* skill that lives inside the consumer's repo. Skills live at `<repo-root>/.claude/skills/<name>/SKILL.md` (the project-local location). This is the runtime source of truth that BOTH the agent (`withSkill('<name>')`) AND Claude Code (`/<name>` discovery) read from.
+- **Source-repo mode** — cwd is the `@serranolabs.io/munchkins` framework's own monorepo. Signal: `packages/munchkins/package.json` declares `name: "@serranolabs.io/munchkins"`. In this mode, you're authoring a *default* skill that ships as a template inside the npm package. Skills live at `packages/munchkins/skills/<name>/SKILL.md` (the template location).
+- **Consumer-repo mode** — cwd consumes `@serranolabs.io/munchkins` via npm. Signal: `@serranolabs.io/munchkins` in `package.json` deps AND `packages/munchkins/` does NOT exist locally. In this mode, you're authoring a *project-specific* skill that lives inside the consumer's repo. Skills live at `<repo-root>/.claude/skills/<name>/SKILL.md` (the project-local location). This is the runtime source of truth that BOTH the agent (`withSkill('<name>')`) AND Claude Code (`/<name>` discovery) read from.
 
 Set `<skills-dir>` accordingly:
 
@@ -254,7 +254,7 @@ import "@serranolabs.io/munchkins"; // registers bug-fix, refactor, feat-small
 // Project-local agents (added by /new-munchkin runs) appear below:
 // import "./agents/<name>/<name>-agent.js";
 
-import { registry } from "@serranolabs.io/munchkins-core";
+import { registry } from "@serranolabs.io/munchkins";
 
 if (import.meta.main) {
   await registry.cli().parseAsync(process.argv);
@@ -273,7 +273,7 @@ if (import.meta.main) {
 
 Use the chosen `<bundle-dir>` from the tradeoff above (default `munchkins`, so the script value becomes `"bun munchkins/index.ts"`).
 
-**Detection of additional installed bundles:** before writing the bundle template, scan the consumer's `package.json` `dependencies` and `devDependencies` for any other package whose name suggests a munchkins bundle (heuristic: contains `munchkins` in the package name AND is not `@serranolabs.io/munchkins-core`). For each match, append a side-effect import line to the template. Examples:
+**Detection of additional installed bundles:** before writing the bundle template, scan the consumer's `package.json` `dependencies` and `devDependencies` for any other package whose name suggests a munchkins bundle (heuristic: contains `munchkins` in the package name AND is not `@serranolabs.io/munchkins`). For each match, append a side-effect import line to the template. Examples:
 
 - `@serranolabs.io/munchkins` → already in template.
 - `@my-org/internal-munchkins` → append `import "@my-org/internal-munchkins";`
@@ -499,7 +499,7 @@ Converting **to or from a Composed (`.thenRun()`) archetype** is out of scope fo
 **Skip if the user did not mention integration / PR / merge.** Otherwise, present the same merge/pr tradeoff as N5b and apply the change in agent.ts:
 
 - Add or update `.integrate(integrateMerge())` / `.integrate(integratePR())` on the builder chain.
-- Add or remove the corresponding import (`integrateMerge` / `integratePR`) from `@serranolabs.io/munchkins-core`.
+- Add or remove the corresponding import (`integrateMerge` / `integratePR`) from `@serranolabs.io/munchkins`.
 - Remind the user the operator `--integrate <mode>` flag still wins at run time.
 
 #### E1c — Cron schedule change (conditional)
@@ -544,7 +544,7 @@ If `fresh_consumer = false`, skip this entire item — the bundle is already wir
 1. **`<skills-dir>/<name>/SKILL.md`** — content from N6 (frontmatter + body). **Skip for Archetype 4** (composed agents have no own skill — their behavior is the concatenation of the children's skills). Write this file FIRST so the agent .ts has something to reference.
 
 2. **`<agents-dir>/<name>/<name>-agent.ts`** — fully wired:
-   - Imports from `@serranolabs.io/munchkins-core`: `AgentBuilder`, `Prompt`, `gitWorktreeSandbox`, `registry`. Add `integratePR` only if N5b chose pr.
+   - Imports from `@serranolabs.io/munchkins`: `AgentBuilder`, `Prompt`, `gitWorktreeSandbox`, `registry`. Add `integratePR` only if N5b chose pr.
    - Imports from the discovered shared presets module: `DEFAULT_CHECKS`, `defaultFixer`, `defaultSummaryWriter`, `GUIDELINES_PATH`, plus the archetype-appropriate `REFACTORER_PATH` / `TEST_WRITER_PATH`. Note: `getAgentPromptsDir` is no longer imported for Archetype 1–3 because the primary prompt comes from the skill, not from a per-agent `prompts/` directory.
    - **Archetype 1–3 shape:** `new AgentBuilder(name, description, gitWorktreeSandbox())`, chains the main step as `.add(new Prompt(GUIDELINES_PATH).withSkill("<name>").withUserMessageFromOption(...))` (the `withSkill('<name>')` helper resolves to `<skills-dir>/<name>/SKILL.md`, strips frontmatter, and uses the body as the system prompt). Auxiliary archetype steps reuse shared paths exactly as before: `.add(new Prompt(GUIDELINES_PATH).withSystem(REFACTORER_PATH).withUserMessage("..."))` for the refactor step, etc. Ends with `.addDeterministic([...DEFAULT_CHECKS], { loop: { maxIterations: 3, fixer: defaultFixer() } })` and `.summaryWriter(defaultSummaryWriter())`. Append `.integrate(integratePR())` only if N5b chose pr. Append `.cron("<spec>", { userMessage: "<canned>", verbosity: "<v>" })` only if N5c chose scheduled (omit `verbosity` when default).
    - **Archetype 4 (Composed) shape:** import the two child builders from their sibling agent files (relative paths within the agents dir), then:
@@ -582,7 +582,7 @@ If `fresh_consumer = false`, skip this entire item — the bundle is already wir
    Add a daemon dispatch to <bundle-package>/src/index.ts before registry.cli():
 
        if (process.argv[2] === "daemon") {
-         const { runDaemon } = await import("@serranolabs.io/munchkins-core");
+         const { runDaemon } = await import("@serranolabs.io/munchkins");
          await runDaemon();
        } else {
          await registry.cli().parseAsync(process.argv);

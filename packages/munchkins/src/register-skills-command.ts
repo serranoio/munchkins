@@ -1,4 +1,4 @@
-import type { AgentRegistry } from "@serranolabs.io/munchkins-core";
+import type { AgentRegistry } from "@serranolabs.io/munchkins";
 import { runSkillsInstall } from "./skills-install.js";
 
 export function registerSkillsCommand(registry: AgentRegistry): void {

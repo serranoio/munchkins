@@ -29,7 +29,7 @@ The intended use case is conversational planning: a step where Claude generates 
 - About performance/security/accuracy: a hitl conversation blocks the runner indefinitely (no timeout in v1). In CI / non-interactive contexts (the scenario harness, any future GitHub Actions usage), a real conversation is a deadlock. The hitl primitive must surface a clear error in non-TTY contexts (decision: fail loudly, see resolutions below).
 
 **Constraints:**
-- **No relative cross-package imports.** Anything new lives in `@serranolabs.io/munchkins-core` and is consumed via the package name (CLAUDE.md hard rule).
+- **No relative cross-package imports.** Anything new lives in `@serranolabs.io/munchkins` and is consumed via the package name (CLAUDE.md hard rule).
 - **Bun only.** No Node-only stdin libraries (e.g. `inquirer`).
 - **No harness leakage.** The hitl primitive must not depend on `scenario_id`, `run_id`, or any harness-only identifier (AGENTS.md hard-rule #4). The harness must be able to mock the conversation loop without touching production code paths.
 - **Single process.** The runner stays alive throughout the conversation. No fork-and-resume model. The conversation happens via stdin/stdout (or piped equivalents in CI) inside the same Bun process.

@@ -386,7 +386,7 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 | D4 ("verbatim copy + single-line carve-out") | D10 (source restructure permitted) | Scaffold milestone is done; deliberate restructure is the new work. |
 | D5 (CLI subcommands `agent`/`workflow`/`autonomous`/`changelog`) | D9 (no `bin` field, no global binary) | Subcommand list dissolves; CLI surface is registry-derived in consumer-owned bin scripts. |
 | PRD §"Constructed bugfix agent — location and surface" | D8 (`packages/munchkins/agents/bugfix/`) | Boundary clarity: example, not framework. |
-| T1 mock seam path | D13 (`@serranolabs.io/munchkins-core/builder/spawn-claude.ts`) | Framework files relocate to `-core`. |
+| T1 mock seam path | D13 (`@serranolabs.io/munchkins/builder/spawn-claude.ts`) | Framework files relocate to `-core`. |
 | T5 publish step | T5 amended (publish two packages topologically) | Two-package split. |
 | T11 publishConfig | T11 amended (both packages) | Two-package split. |
 
@@ -395,7 +395,7 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 **Delivers:** the `-core` package as the framework boundary. No PRD scenario fully verified by this slice alone; foundation for S13 (Slice 10) and S14 (Slice 11).
 
 **Files to create:**
-- `packages/munchkins-core/package.json` — `name: "@serranolabs.io/munchkins-core"`, `version: "0.1.0"` (or whatever the current bundle version is — match), `publishConfig.access: "public"`, `exports: { ".": "./src/index.ts", "./builder/spawn-claude.ts": "./src/builder/spawn-claude.ts", "./builder": "./src/builder/index.ts", "./registry": "./src/registry/index.ts" }`, devDependencies as needed (`@types/bun`, `typescript`), runtime deps (`commander` — moved from bundle).
+- `packages/munchkins-core/package.json` — `name: "@serranolabs.io/munchkins"`, `version: "0.1.0"` (or whatever the current bundle version is — match), `publishConfig.access: "public"`, `exports: { ".": "./src/index.ts", "./builder/spawn-claude.ts": "./src/builder/spawn-claude.ts", "./builder": "./src/builder/index.ts", "./registry": "./src/registry/index.ts" }`, devDependencies as needed (`@types/bun`, `typescript`), runtime deps (`commander` — moved from bundle).
 - `packages/munchkins-core/tsconfig.json` — `extends: "../../tsconfig.json"`, `include: ["src/**/*"]`.
 
 **Files to MOVE (from `packages/munchkins/src/` → `packages/munchkins-core/src/`):**
@@ -417,7 +417,7 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 - `biome.json` includes already cover `packages/`.
 
 **Completion:**
-- `bun install` succeeds; `packages/munchkins-core/node_modules/` resolves; bundle's `package.json` (after Slice 11) declares `@serranolabs.io/munchkins-core: "workspace:*"`.
+- `bun install` succeeds; `packages/munchkins-core/node_modules/` resolves; bundle's `package.json` (after Slice 11) declares `@serranolabs.io/munchkins: "workspace:*"`.
 - `bun run typecheck` passes (turbo runs `tsc --noEmit` per workspace).
 - `bun run lint` passes.
 
@@ -445,10 +445,10 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 **Delivers:** S14 (consumer installs the bundle, default bugfix agent registers itself). Updates S1 (CLI surface is registry-derived).
 
 **Files to create:**
-- `packages/munchkins/agents/bugfix/bugfix-agent.ts` — constructs the bugfix builder directly via `AgentBuilder` (no factory function needed; per the Option Y design, the builder declares its own description + options via inline chained methods, and the registry just consumes the builder). Imports `AgentBuilder`, `Prompt`, `registry` from `@serranolabs.io/munchkins-core`. Resolves prompt files from `packages/munchkins/agents/bugfix/prompts/`. Module body:
+- `packages/munchkins/agents/bugfix/bugfix-agent.ts` — constructs the bugfix builder directly via `AgentBuilder` (no factory function needed; per the Option Y design, the builder declares its own description + options via inline chained methods, and the registry just consumes the builder). Imports `AgentBuilder`, `Prompt`, `registry` from `@serranolabs.io/munchkins`. Resolves prompt files from `packages/munchkins/agents/bugfix/prompts/`. Module body:
 
   ```ts
-  import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins-core";
+  import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins";
   import { dirname, join } from "node:path";
   import { fileURLToPath } from "node:url";
 
@@ -485,11 +485,11 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 - `packages/munchkins/agents/bugfix/prompts/bug-fix.md`, `refactorer.md`, `deterministic-fixer.md` — MOVE from `packages/munchkins/docs/subagents/*.md`. Content unchanged.
 
 **Files to edit:**
-- `packages/munchkins/package.json` — add `dependencies: { "@serranolabs.io/munchkins-core": "workspace:*" }`, update `exports` map: `{ ".": "./src/index.ts", "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts" }`, add `files: ["src", "agents"]`. **REMOVE the `bin` field** if present (per D9).
+- `packages/munchkins/package.json` — add `dependencies: { "@serranolabs.io/munchkins": "workspace:*" }`, update `exports` map: `{ ".": "./src/index.ts", "./agents/bugfix": "./agents/bugfix/bugfix-agent.ts" }`, add `files: ["src", "agents"]`. **REMOVE the `bin` field** if present (per D9).
 - `packages/munchkins/src/index.ts` — replace contents with:
 
   ```ts
-  export * from "@serranolabs.io/munchkins-core";
+  export * from "@serranolabs.io/munchkins";
   import "../agents/bugfix/bugfix-agent.js"; // side-effect: registers default bugfix agent
   ```
 
@@ -506,7 +506,7 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
 - `bin/munchkins.ts` — the sample bin script (NOT a published surface; referenced from `AGENTS.md`).
 
 **Completion (S14 verification):**
-- Smoke test in `ci.yml` or a dedicated `bun test` file: `import { registry } from "@serranolabs.io/munchkins-core"; await import("@serranolabs.io/munchkins"); assert(registry.list().includes("bug-fix"));`. Exits 0.
+- Smoke test in `ci.yml` or a dedicated `bun test` file: `import { registry } from "@serranolabs.io/munchkins"; await import("@serranolabs.io/munchkins"); assert(registry.list().includes("bug-fix"));`. Exits 0.
 - `bun run --cwd packages/munchkins -- node -e 'console.log(...)'` smoke confirming the bundle entry point side-effect-registers without throwing.
 - `bun run typecheck` + `bun run lint` pass.
 - **Updated S1 verification:** `bun run bin/munchkins.ts --help` exits 0 and lists `bug-fix` (or whatever name is registered) as a subcommand. `bun run bin/munchkins.ts bug-fix --help` exits 0 and lists `--user-message <user-message>` (Commander kebab-cases the camelCase option name).
@@ -540,15 +540,15 @@ Triggered by `diagnosis.md` D7–D13. The scaffold milestone (Slices 1–8 above
   Tag trigger remains `tags: ['v*']` (T3 unchanged).
 - `.github/workflows/ci.yml` — add the S13/S14 smoke assertions to the `test` job (or a sibling `smoke` job).
 - `AGENTS.md` — replace the "Munchkins CLI" section with:
-  - **Library API** — describes `@serranolabs.io/munchkins-core` exports (`AgentBuilder`, `AgentRegistry`, `registry`, `Prompt`, `spawnClaude`) and `@serranolabs.io/munchkins` (re-exports `-core` + side-effect-registers default agents).
+  - **Library API** — describes `@serranolabs.io/munchkins` exports (`AgentBuilder`, `AgentRegistry`, `registry`, `Prompt`, `spawnClaude`) and `@serranolabs.io/munchkins` (re-exports `-core` + side-effect-registers default agents).
   - **No published binary** — explicit statement per D9, with a pointer to `bin/munchkins.ts` for the sample bin script.
-  - **Version-bump procedure** — bump BOTH `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions in lockstep, AND update the bundle's `dependencies["@serranolabs.io/munchkins-core"]` to match the new version, commit, tag, push.
+  - **Version-bump procedure** — bump BOTH `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions in lockstep, AND update the bundle's `dependencies["@serranolabs.io/munchkins"]` to match the new version, commit, tag, push.
 - `AGENTS.md` "Where things live" table — update entries for moved files.
 - `AGENTS.md` "Command registry" table — REMOVE the `bugfix --focus <path>` munchkins-CLI subcommand row entirely (per D9, no `bugfix` CLI subcommand exists post-refactor — the registry-derived CLI is constructed by consumers from a project-local bin script, not shipped). Other rows unchanged.
 
 **Completion:**
 - `AGENTS.md` `grep -F "@insider-trading/agents"` returns no matches (already true post-scaffold, re-asserted).
-- `AGENTS.md` `grep -F "@serranolabs.io/munchkins-core"` returns ≥1 match (S6 strengthened).
+- `AGENTS.md` `grep -F "@serranolabs.io/munchkins"` returns ≥1 match (S6 strengthened).
 - `AGENTS.md` `grep -F "bin/munchkins.ts"` returns ≥1 match (sample bin documented).
 - A dry-run of `publish.yml` against a test tag (manual S12 verification — operator pushes `v0.0.0-alpha.1` after the refactor lands) publishes both packages successfully and a sandbox `bun add @serranolabs.io/munchkins@0.0.0-alpha.1` resolves both deps.
 

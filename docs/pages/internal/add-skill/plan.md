@@ -227,7 +227,7 @@ This slice ships everything needed to verify S1 in CI on merge.
 8. In `scenarios/index.ts`:
    - After the existing `agentResult.succeeded` check, add a second builder run that exercises **both** call forms — bare-string sugar AND the explicit `Skill` object — so D1 and D11 are both covered by the scenario:
      ```ts
-     const { AgentBuilder, gitWorktreeSandbox, Skill } = await import("@serranolabs.io/munchkins-core")
+     const { AgentBuilder, gitWorktreeSandbox, Skill } = await import("@serranolabs.io/munchkins")
      // Bare-string form (D1 sugar):
      const skillBuilder = new AgentBuilder("addskill-coverage", "Harness addSkill coverage", gitWorktreeSandbox())
        .addSkill("noop-fixture")
@@ -274,7 +274,7 @@ This slice ships everything needed to verify S1 in CI on merge.
 
 2. Build an ad-hoc agent registered into the registry (script under `examples/manual-addskill-test.ts` or a temporary registration file). Cover **all three** call surfaces — bare-string, `Skill`-object with literal args, `Skill`-object with option-bound args — so D1 + D11 + D16 are all live-verified:
    ```ts
-   import { AgentBuilder, gitWorktreeSandbox, registry, Skill } from "@serranolabs.io/munchkins-core"
+   import { AgentBuilder, gitWorktreeSandbox, registry, Skill } from "@serranolabs.io/munchkins"
    const builder = new AgentBuilder("manual-addskill-test", "Manual addSkill verification", gitWorktreeSandbox())
      // bare-string form
      .addSkill("manual-test-noop")
@@ -375,7 +375,7 @@ The harness work (`scenarios/`) depends on both production pieces. Even a parall
 
 - **Bun-only.** Per AGENTS.md hard-rule #1.
 
-- **No relative cross-package imports.** Per CLAUDE.md, the harness consumes `@serranolabs.io/munchkins-core` via the package name, not by relative path.
+- **No relative cross-package imports.** Per CLAUDE.md, the harness consumes `@serranolabs.io/munchkins` via the package name, not by relative path.
 
 - **No new prompt files.** The addSkill primitive's behavior is a slash-command construction, not a system-prompt-loaded subagent.
 

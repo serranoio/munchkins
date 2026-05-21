@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Bump versions in packages/munchkins{-core,}, commit, tag vX.Y.Z, push.
+// Bump version in packages/munchkins, commit, tag vX.Y.Z, push.
 // Pushing the tag fires .github/workflows/publish.yml.
 //
 //   bun run release patch     # 0.1.0 -> 0.1.1
@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const PACKAGES = ["packages/munchkins-core/package.json", "packages/munchkins/package.json"];
+const PACKAGES = ["packages/munchkins/package.json"];
 
 type Bump = "patch" | "minor" | "major";
 

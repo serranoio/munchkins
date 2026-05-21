@@ -188,8 +188,8 @@ The director re-reads `PURPOSE.md` every tick. Editing the file is the operator'
 ### `director-agent.ts` shape
 
 ```ts
-import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins-core";
-import { gitWorktreeSandbox } from "@serranolabs.io/munchkins-core";
+import { AgentBuilder, Prompt, registry } from "@serranolabs.io/munchkins";
+import { gitWorktreeSandbox } from "@serranolabs.io/munchkins";
 import { DEFAULT_CHECKS, defaultFixer, defaultSummaryWriter } from "../_shared/presets.js";
 
 const builder = new AgentBuilder(

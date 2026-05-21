@@ -26,7 +26,7 @@
 - About performance/security/accuracy: skill resolution reads files from a user-controlled directory tree (`~/.claude/skills/` and `<cwd>/.claude/skills/`). Claude Code does the resolution; munchkins reads no SKILL.md files itself, so there is no parallel resolver to keep in sync.
 
 **Constraints:**
-- **No relative cross-package imports.** Anything new lives in `@serranolabs.io/munchkins-core` (or `@serranolabs.io/munchkins` for default-agent additions) and is consumed via the package name. CLAUDE.md hard rule.
+- **No relative cross-package imports.** Anything new lives in `@serranolabs.io/munchkins` (or `@serranolabs.io/munchkins` for default-agent additions) and is consumed via the package name. CLAUDE.md hard rule.
 - **Bun only.** No npm/pnpm.
 - **No harness leakage.** addSkill must not depend on `scenario_id`, `run_id`, or any harness-only identifier (AGENTS.md hard-rule #4).
 - **Builder-level primitive.** Must compose with the existing `add()` / `addDeterministic()` / `finalize()` / `summaryWriter()` chain — no parallel runtime.

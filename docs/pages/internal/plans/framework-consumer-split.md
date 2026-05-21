@@ -118,7 +118,7 @@ test && bun run scenario`).
   framework package has zero knowledge of agents.
 - Move/copy `PURPOSE.md` if director needs it co-located. Otherwise leave
   at repo root and document that director reads from cwd's repo root.
-- Update agent-side imports: `@serranolabs.io/munchkins-core` references in
+- Update agent-side imports: `@serranolabs.io/munchkins` references in
   the 4 agents become `@serranolabs.io/munchkins` (still resolves through
   workspace; munchkins-core not yet deleted).
 
@@ -127,13 +127,13 @@ test && bun run scenario`).
 - `git mv packages/munchkins-core/src/* packages/munchkins/src/` (preserve
   per-subdir grouping: `builder/`, `registry/`, `resume/`, `status/`,
   `scheduler/`, `sandbox/`, plus the loose files).
-- Rewrite every import in the monorepo from `@serranolabs.io/munchkins-core`
+- Rewrite every import in the monorepo from `@serranolabs.io/munchkins`
   → `@serranolabs.io/munchkins`. Sites today (per grep): agents (4),
   agents `_shared/presets.ts`, `register-skills-command.ts`, dogfood
   `agentRegistry.ts`, all scenario files (6+), `packages/munchkins/src/index.ts`,
   test files.
 - Delete `packages/munchkins-core/` directory.
-- Drop `@serranolabs.io/munchkins-core` from root `devDependencies` and
+- Drop `@serranolabs.io/munchkins` from root `devDependencies` and
   from `packages/munchkins/package.json`'s `dependencies`.
 - Update `packages/munchkins/package.json` `exports` to re-include
   what `munchkins-core/package.json` was exporting (`./builder`,

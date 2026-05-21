@@ -49,7 +49,7 @@ Each scenario describes one observable behavior. Each maps 1:1 to a verification
 ```ts
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core"
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins"
 import { GUIDELINES_PATH, defaultSummaryWriter } from "../_shared/presets.js"
 
 const PROMPTS = join(dirname(fileURLToPath(import.meta.url)), "prompts")

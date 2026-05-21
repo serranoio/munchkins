@@ -39,31 +39,25 @@ prompt ──┬── local CLI:  bun run munchkins <agent>
 
 ```sh
 # 1. set up
-bun add -D @serranolabs.io/munchkins && bun run munchkins skills install
+bun add -D @serranolabs.io/munchkins && bunx munchkins-init
 
-# 2. use it
-bun run munchkins bug-fix --user-message="add() in src/math.ts returns a-b instead of a+b"
+# 2. design your first agent
+#    /munchkins:new-munchkin   (in Claude Code)
+
+# 3. use it
+bun run munchkins <your-agent> --user-message="…"
 ```
 
-After setup, Claude Code in your repo also discovers the same workflows as namespaced skills:
+`bunx munchkins-init` scaffolds an `agentRegistry.ts` at the repo root, adds a `"munchkins"` script to `package.json`, and installs the bundled meta-skills into `.claude/skills/`. The framework package ships zero default agents — you author your own (or copy the dogfood agents in [serranoio/munchkins](https://github.com/serranoio/munchkins/tree/main/packages/serrano-munchkins)).
+
+After setup, Claude Code in your repo discovers two meta-skills:
 
 ```
-/munchkins:bug-fix
-/munchkins:refactor
-/munchkins:feat-small
-/munchkins:launch-munchkin     # delegate to a munchkin from any Claude Code session
 /munchkins:new-munchkin        # author or revise a project-local agent
+/munchkins:launch-munchkin     # delegate to a munchkin from any Claude Code session
 ```
 
-One file, two surfaces. Edit `.claude/skills/munchkins-bug-fix/SKILL.md` and both `bun run munchkins bug-fix` and `/munchkins:bug-fix` use your edits.
-
-## Default agents
-
-| Agent | What it does |
-|-------|--------------|
-| `bug-fix` | Roots out the cause, applies the minimal fix, then refactors what it touched. |
-| `feat-small` | Adds a small, scoped feature end-to-end with refactor + test passes. |
-| `refactor` | Behavior-preserving cleanup: DRY, naming, decomposition, clarity. |
+One file, two surfaces. Edit `.claude/skills/<my-skill>/SKILL.md` and both `bun run munchkins <my-agent>` and `/<namespace>:<my-skill>` use your edits.
 
 ## Backends
 
@@ -99,12 +93,15 @@ By hand:
 
 ```ts
 // my-repo/munchkins/agents/release-notes/release-notes-agent.ts
-import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins-core";
-import { GUIDELINES_PATH, DEFAULT_CHECKS, defaultFixer } from "@serranolabs.io/munchkins/agents/_shared/presets";
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
 
 const builder = new AgentBuilder("release-notes", "Generate release notes from recent commits.", gitWorktreeSandbox())
-  .add(new Prompt(GUIDELINES_PATH).withSkill("lumen:release-notes").withUserMessageFromOption("userMessage"))
-  .addDeterministic([...DEFAULT_CHECKS], { loop: { maxIterations: 3, fixer: defaultFixer() } });
+  .add(new Prompt().withSkill("lumen:release-notes").withUserMessageFromOption("userMessage"))
+  .addDeterministic([
+    "bun run lint",
+    "bun run typecheck",
+    "bun run scenario",
+  ], { loop: { maxIterations: 3 } });
 
 registry.register(builder);
 ```
@@ -114,8 +111,8 @@ Project-local skills go at `.claude/skills/<namespace>-<slug>/SKILL.md` with fro
 ## Opinions
 
 - **munchkins expects to live in your project.** Skills get committed. There's no opaque package-internal agent surface — the SKILL.md is *your* file, in *your* repo, reviewed in *your* PRs. If you want a black box, this isn't it.
-- **One source of truth per skill.** No fallback layer, no override hierarchy. Either the file exists at `.claude/skills/<namespace>-<slug>/SKILL.md` or the agent throws a clear error pointing at `skills install`.
-- **Customizations survive upgrades.** `skills install` is skip-if-exists; consumer edits are sacred. Edit your local skill, run `bun update @serranolabs.io/munchkins`, edit again. Your changes are never clobbered.
+- **One source of truth per skill.** No fallback layer, no override hierarchy. Either the file exists at `.claude/skills/<namespace>-<slug>/SKILL.md` or the agent throws a clear error pointing at `bunx munchkins-init`.
+- **Customizations survive upgrades.** `bunx munchkins-init` is skip-if-exists; consumer edits are sacred. Edit your local skill, run `bun update @serranolabs.io/munchkins`, edit again. Your changes are never clobbered.
 - **The `munchkins:` namespace is reserved.** Defaults shipped by `@serranolabs.io/munchkins` use it. Your project-local skills should use a different namespace (`<org>:<slug>`) so they don't collide with future defaults.
 
 ## Requirements

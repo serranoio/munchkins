@@ -32,7 +32,7 @@ bun run scenario        # runs bugfix-agent-e2e; exit 0 pass / 1 fail
 
 Wired via root `package.json` `"scenario": "bun run scenarios/index.ts"`. No `list`, no `run <id>`, no mode dispatcher. Surface grows only when a second deep-simulation scenario is added by a future PRD.
 
-**Behavior on invocation:** create temp sandbox → init git repo from seed fixture → install in-process Claude mock seam at `@serranolabs.io/munchkins-core/builder/spawn-claude.ts` (per D13/T1) → install sandbox-local stubs for deterministic-loop commands → import bugfix-agent constructor from `@serranolabs.io/munchkins/agents/bugfix` (per D8 — relocated post-refactor) → invoke against sandbox → assert outcomes + run mock-call audit → emit structured JSON result + summary line → on pass remove sandbox, on fail preserve and print path.
+**Behavior on invocation:** create temp sandbox → init git repo from seed fixture → install in-process Claude mock seam at `@serranolabs.io/munchkins/builder/spawn-claude.ts` (per D13/T1) → install sandbox-local stubs for deterministic-loop commands → import bugfix-agent constructor from `@serranolabs.io/munchkins/agents/bugfix` (per D8 — relocated post-refactor) → invoke against sandbox → assert outcomes + run mock-call audit → emit structured JSON result + summary line → on pass remove sandbox, on fail preserve and print path.
 
 **Boundary:** harness imports normal package exports. Neither munchkins-core nor the bundle depends on the harness, accepts `scenario_id`/`run_id`/harness-only inputs, or knows the harness exists.
 
@@ -140,9 +140,9 @@ Required by plan-funnel skill rules for browser/operator-driven scenarios. Each 
 
 ### S12 — Tag triggers npm publish (amended — change-impact round 1)
 
-- **Run:** with `NPM_TOKEN` repo secret configured for `@serranolabs.io` scope, bump **both** `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions to `0.0.0-alpha.0` (and update the bundle's `dependencies["@serranolabs.io/munchkins-core"]` to match), commit, push, then tag and push per pattern locked in `technology-decisions.md`.
-- **Open:** GitHub Actions `publish` run; npm registry pages for both `@serranolabs.io/munchkins-core` and `@serranolabs.io/munchkins`.
-- **Expected:** lint+test gating jobs run first; on green, publish step runs `bun publish` for `-core` first, then for the bundle (topological order — bundle's dep on `-core` requires `-core` to be on the registry first); new versions on both registry pages within ~1min; `npm i @serranolabs.io/munchkins@<version>` in a sandbox project resolves both packages, and `import { registry } from "@serranolabs.io/munchkins-core"; await import("@serranolabs.io/munchkins"); registry.cli().parse(['bug-fix','--help'])` exits 0 with the expected `--user-message` flag listed.
+- **Run:** with `NPM_TOKEN` repo secret configured for `@serranolabs.io` scope, bump **both** `packages/munchkins-core/package.json` and `packages/munchkins/package.json` versions to `0.0.0-alpha.0` (and update the bundle's `dependencies["@serranolabs.io/munchkins"]` to match), commit, push, then tag and push per pattern locked in `technology-decisions.md`.
+- **Open:** GitHub Actions `publish` run; npm registry pages for both `@serranolabs.io/munchkins` and `@serranolabs.io/munchkins`.
+- **Expected:** lint+test gating jobs run first; on green, publish step runs `bun publish` for `-core` first, then for the bundle (topological order — bundle's dep on `-core` requires `-core` to be on the registry first); new versions on both registry pages within ~1min; `npm i @serranolabs.io/munchkins@<version>` in a sandbox project resolves both packages, and `import { registry } from "@serranolabs.io/munchkins"; await import("@serranolabs.io/munchkins"); registry.cli().parse(['bug-fix','--help'])` exits 0 with the expected `--user-message` flag listed.
 - **Forbidden:** publish runs despite gating-job red; published `name` wrong on either package; **`bin` field PRESENT on either package** (per D9 — neither package ships a binary); tarball includes `node_modules`/`bun.lock`/unwanted files; bundle published before `-core`; `import "@serranolabs.io/munchkins"` fails to register the default bugfix agent.
 - **Inspect:** publish workflow run log (verify topological order); both npm registry pages; sandbox-project import smoke test result.
 

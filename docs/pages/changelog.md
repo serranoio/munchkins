@@ -145,7 +145,7 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 **Goal:** Stop the hardcoded `if/else` dispatch for `daemon`, `resume`, `status`, and `skills install` in `packages/munchkins/src/index.ts` and let the registry expose every system command in `munchkins --help` alongside the agents.
 
-**Outcome:** Added `AgentRegistry.registerCommand({ name, description, configure })` plus a parallel `commands` map; `cli()` now appends a commander subcommand per registered command without leaking agent-only flags (`--dry-run`, `--thinking`, `--verbose`, `--cli`, `--integrate`) onto them. Each core subsystem ships a dedicated `command.ts` (`packages/munchkins-core/src/{resume,status,scheduler}/command.ts`) that wraps the existing `runResume` / `runStatus` / `runDaemon` in a commander `action`, and the CLI package adds `packages/munchkins/src/register-skills-command.ts` for the `skills install` subcommand (kept in-package because it depends on `PACKAGE_ROOT`). All four are wired at module-load: core's `index.ts` calls the three `register*Command(registry)` helpers as a side effect, so any consumer of `@serranolabs.io/munchkins-core` gets them for free, and the CLI's `index.ts` calls `registerSkillsCommand(registry)` once at the top before `registry.cli().parseAsync(argv)`. The cmux delegation block and `--no-cmux` argv filter are preserved verbatim.
+**Outcome:** Added `AgentRegistry.registerCommand({ name, description, configure })` plus a parallel `commands` map; `cli()` now appends a commander subcommand per registered command without leaking agent-only flags (`--dry-run`, `--thinking`, `--verbose`, `--cli`, `--integrate`) onto them. Each core subsystem ships a dedicated `command.ts` (`packages/munchkins-core/src/{resume,status,scheduler}/command.ts`) that wraps the existing `runResume` / `runStatus` / `runDaemon` in a commander `action`, and the CLI package adds `packages/munchkins/src/register-skills-command.ts` for the `skills install` subcommand (kept in-package because it depends on `PACKAGE_ROOT`). All four are wired at module-load: core's `index.ts` calls the three `register*Command(registry)` helpers as a side effect, so any consumer of `@serranolabs.io/munchkins` gets them for free, and the CLI's `index.ts` calls `registerSkillsCommand(registry)` once at the top before `registry.cli().parseAsync(argv)`. The cmux delegation block and `--no-cmux` argv filter are preserved verbatim.
 
 **Refactor type:** extraction
 
@@ -550,8 +550,8 @@ The net line growth reflects four new dedicated command modules + extended test 
 - New file: `packages/munchkins-core/src/scheduler/daemon.ts`
 - New file: `packages/munchkins-core/src/scheduler/index.ts`
 - New file: `packages/munchkins-core/src/scheduler/daemon.test.ts`
-- New package export path: `@serranolabs.io/munchkins-core/scheduler` (added in `packages/munchkins-core/package.json`)
-- Other: `cron-parser@^5.5.0` added as a dependency of `@serranolabs.io/munchkins-core`
+- New package export path: `@serranolabs.io/munchkins/scheduler` (added in `packages/munchkins-core/package.json`)
+- Other: `cron-parser@^5.5.0` added as a dependency of `@serranolabs.io/munchkins`
 
 **Lines added:** +407 (across 8 files)
 
