@@ -148,28 +148,44 @@ published framework, `bunx munchkins-init`, scaffold an agent via
 
 ### Consumer (`scenarios/consumer-bootstrap-e2e.ts`)
 
-- [ ] `bun add -D <tarball>` succeeds in a clean tmp repo with no warnings
+- [x] `bun add -D <tarball>` succeeds in a clean tmp repo with no warnings
   beyond expected workspace-resolution noise.
-- [ ] `bunx munchkins-init` scaffolds `agentRegistry.ts`, adds the
+- [x] `bunx munchkins-init` scaffolds `agentRegistry.ts`, adds the
   `"munchkins"` script, and symlinks bundled skills into
   `.claude/skills/munchkins-{new-munchkin,launch-munchkin}/`.
-- [ ] `bun run munchkins --help` lists `resume`, `status`, `daemon` — and
+- [x] `bun run munchkins --help` lists `resume`, `status`, `daemon` — and
   zero agent commands.
-- [ ] Re-running `bunx munchkins-init` preserves operator edits to
+- [x] Re-running `bunx munchkins-init` preserves operator edits to
   `.claude/skills/*/SKILL.md` (skip-if-exists).
-- [ ] A hand-scaffolded stub agent appears in `--help` after appending its
+- [x] A hand-scaffolded stub agent appears in `--help` after appending its
   import to `agentRegistry.ts`. `bun run munchkins stub` runs it end to
   end.
-- [ ] `MUNCHKINS_CHANGELOG_PATH=foo.md bun run ./agentRegistry.ts stub …`
+- [x] `MUNCHKINS_CHANGELOG_PATH=foo.md bun run ./agentRegistry.ts stub …`
   writes the changelog at `foo.md` (no reliance on the npm-script
   wrapper).
 
 ### Contributor (`scripts/onboarding-smoke.ts`)
 
-- [ ] `git clone` → `bun install` → `bun run typecheck && bun run lint &&
+- [x] `git clone` → `bun install` → `bun run typecheck && bun run lint &&
   bun test && bun run scenario` all green.
-- [ ] `bun run munchkins --help` lists the 4 dogfood agents (`bug-fix`,
+- [x] `bun run munchkins --help` lists the 4 dogfood agents (`bug-fix`,
   `feat-small`, `refactor`, `director`) plus framework commands
   (`resume`, `status`, `daemon`).
 - [ ] `bun run munchkins bug-fix --user-message=<trivial>` lands a single
-  commit on `main` and cleans the worktree.
+  commit on `main` and cleans the worktree. Assertion exists at
+  `scripts/onboarding-smoke.ts:130-147` behind `--with-real-bugfix`;
+  not exercised in default smoke run because it burns Claude tokens.
+  Tick after a manual `bun run scripts/onboarding-smoke.ts --with-real-bugfix`
+  run lands green.
+
+**Progress (2026-05-21):**
+- All 6 consumer ACs validated via `bun run scenario` —
+  `consumer-bootstrap-e2e` passes end-to-end (pack → install → init →
+  scaffold → re-init idempotency → stub agent → direct agentRegistry.ts).
+- Contributor AC1 + AC2 validated via
+  `bun run scripts/onboarding-smoke.ts --with-scenario` — 8 steps green
+  in ~26 s. Includes the full inner `bun run scenario` against the
+  clone, so the smoke covers the fresh-clone gate the AC asks for.
+- Contributor AC3 not run autonomously (real Claude tokens). Smoke
+  script has the assertion path — operator runs `--with-real-bugfix`
+  when ready to tick.
