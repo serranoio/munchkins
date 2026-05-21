@@ -1,0 +1,46 @@
+#!/usr/bin/env bun
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+
+const logFile = process.env.FAKE_GH_LOG_FILE;
+if (!logFile) {
+  process.stderr.write("fake-gh: FAKE_GH_LOG_FILE must be set\n");
+  process.exit(2);
+}
+
+const argv = process.argv.slice(2);
+
+interface Invocation {
+  argv: string[];
+  flags: Record<string, string>;
+}
+
+const flags: Record<string, string> = {};
+for (let i = 0; i < argv.length; i++) {
+  const tok = argv[i];
+  if (tok.startsWith("--")) {
+    const next = argv[i + 1];
+    if (next !== undefined && !next.startsWith("--")) {
+      flags[tok.slice(2)] = next;
+      i++;
+    } else {
+      flags[tok.slice(2)] = "";
+    }
+  }
+}
+
+const entry: Invocation = { argv, flags };
+appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
+
+const counterFile = `${logFile}.counter`;
+let n = 1;
+try {
+  n = Number(readFileSync(counterFile, "utf-8")) + 1;
+} catch {
+  // first call
+}
+writeFileSync(counterFile, String(n));
+
+if (argv[0] === "pr" && argv[1] === "create") {
+  process.stdout.write(`https://github.com/fake/fake/pull/${n}\n`);
+}
+process.exit(0);

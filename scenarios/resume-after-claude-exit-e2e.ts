@@ -286,6 +286,32 @@ async function run(): Promise<ScenarioResult> {
       );
     }
 
+    // Assertion 11: the public CLI surface `munchkins resume --list` (the form
+    // the todo entry's acceptance criterion names) must also surface the run.
+    // Exercises the command wiring in resume/command.ts, not just the library
+    // helper above.
+    const listProc = Bun.spawn(["bun", munchkinsBin, "resume", "--list"], {
+      cwd: sandbox.path,
+      env: { ...process.env, MUNCHKINS_RUN_LOG_DIR: artifactDir },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const listExit = await listProc.exited;
+    const listStdout = await new Response(listProc.stdout).text();
+    const listStderr = await new Response(listProc.stderr).text();
+    if (listExit !== 0) {
+      return failResult(
+        "execution",
+        `resume --list subprocess exited ${listExit}\n--- stdout ---\n${listStdout}\n--- stderr ---\n${listStderr}`,
+      );
+    }
+    if (!listStdout.includes(stateAfterPhase1.runId)) {
+      return failResult(
+        "assertion",
+        `expected \`resume --list\` stdout to include runId ${stateAfterPhase1.runId}; got:\n${listStdout}`,
+      );
+    }
+
     // ── Phase 2: subprocess `munchkins resume <runId>` via fake-claude shim. ──
     const counterFile = join(artifactDir, "phase2-counter");
     if (existsSync(counterFile)) rmSync(counterFile);

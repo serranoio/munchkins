@@ -27,24 +27,33 @@ const builder = new AgentBuilder(
       "Per-tick payload (default 'tick'); unused by the pipeline but required by the CLI surface.",
     default: "tick",
   })
-  .addDeterministic([`bash ${join(SCRIPTS, "inflight-survey.sh")}`])
-  .addDeterministic([`bash ${join(SCRIPTS, "repo-survey.sh")}`])
+  .addDeterministic([`bun ${join(SCRIPTS, "inflight-survey.ts")}`])
+  .addDeterministic([`bun ${join(SCRIPTS, "repo-survey.ts")}`])
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:director")
-      .withSystem(join(PROMPTS, "triage.md")),
+      .withSystem(join(PROMPTS, "triage.md"))
+      .withUserMessage(
+        "Execute the Triage step per the system prompt. Discover the current run directory via .director/current; read PURPOSE.md, inflight.json, and survey.md; write triage.json (or the idle short-circuit).",
+      ),
   )
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:director")
-      .withSystem(join(PROMPTS, "spec.md")),
+      .withSystem(join(PROMPTS, "spec.md"))
+      .withUserMessage(
+        "Execute the Spec step per the system prompt. Discover the current run directory via .director/current; read triage.json; honor the upstream-idle short-circuit; write spec.md.",
+      ),
   )
   .add(
     new Prompt(GUIDELINES_PATH)
       .withSkill("munchkins:director")
-      .withSystem(join(PROMPTS, "plan.md")),
+      .withSystem(join(PROMPTS, "plan.md"))
+      .withUserMessage(
+        "Execute the Plan step per the system prompt. Discover the current run directory via .director/current; read spec.md; honor the upstream-idle short-circuit; write plan.md.",
+      ),
   )
-  .addDeterministic([`bash ${join(SCRIPTS, "dispatch.sh")}`])
+  .addDeterministic([`bun ${join(SCRIPTS, "dispatch.ts")}`])
   .addDeterministic([...DEFAULT_CHECKS], {
     loop: { maxIterations: 3, fixer: defaultFixer() },
   })

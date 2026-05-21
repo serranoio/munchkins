@@ -185,6 +185,17 @@ export function readDispatchLog(path: string): ChildSpawnEntry[] {
 }
 
 export function setupAuditGuard(): void {
+  // Scrub framework-internal __MUNCHKINS_OPT_* control flags that may have leaked
+  // in from a parent process (e.g. when scenarios run inside a director worktree's
+  // DEFAULT_CHECKS step, __MUNCHKINS_OPT_dryRun=true would otherwise cause the
+  // programmatically-invoked agent.run() to short-circuit with zero mock calls).
+  // Scenarios that need a specific option set it explicitly after this call.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("__MUNCHKINS_OPT_")) {
+      delete process.env[key];
+    }
+  }
+
   const originalSpawn = Bun.spawn.bind(Bun);
   type SpawnArg = string[] | { cmd?: string[] };
   (Bun as { spawn: (cmd: SpawnArg, opts?: unknown) => unknown }).spawn = (

@@ -285,6 +285,26 @@ async function runVariant(
     }
     const snapshotSha = snapshots[0];
 
+    // The snapshot commit must be authored as `munchkins` (set via
+    // `git -c user.name=munchkins -c user.email=munchkins@local commit` in
+    // integrate.ts::snapshotDirtyRepoRoot). Recovery tooling filters on author.
+    const snapshotAuthor = (
+      await $`git log -1 --format=%an ${snapshotSha}`.cwd(sandbox.path).quiet()
+    )
+      .text()
+      .trim();
+    if (snapshotAuthor !== "munchkins") {
+      return {
+        id: variant.id,
+        result: "fail",
+        sandboxPath: sandbox.path,
+        failure: {
+          phase: "assertion",
+          message: `snapshot commit author expected "munchkins"; got "${snapshotAuthor}"`,
+        },
+      };
+    }
+
     for (const { path, expectInSnapshot } of dirtyFiles) {
       const actual = await readFileAtCommit(sandbox.path, snapshotSha, path);
       if (actual !== expectInSnapshot) {
