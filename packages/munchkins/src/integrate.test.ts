@@ -173,8 +173,10 @@ describe("integrateBranch", () => {
     if (result.ok) expect(result.fixerIters).toBe(0);
     expect(cli.invocations).toBe(0);
 
+    // "main edit" is a direct commit on main and always visible in the log.
+    // "branch edit" is squashed into the single squash commit — verify via
+    // working-tree content rather than commit subject.
     const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
-    expect(log).toContain("branch edit");
     expect(log).toContain("main edit");
 
     // Agent wins on the overlapping line.
@@ -231,8 +233,9 @@ describe("integrateBranch", () => {
     if (result.ok) expect(result.fixerIters).toBe(0);
     expect(cli.invocations).toBe(0);
 
-    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
-    expect(log).toContain("fresh feature");
+    // Squash produces a single commit on main (message: "agent: <branch>").
+    // Verify the branch's content landed in the working tree.
+    expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
   });
 });
 
@@ -293,17 +296,16 @@ describe("integrateBranch dirty-repoRoot matrix", () => {
     expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
     expect(await Bun.file(join(repo.path, "README.md")).text()).toBe("# dirty edit\n");
 
-    // main HEAD descends from snapshot AND from branch tip.
+    // Snapshot commit is a git ancestor of the squash commit on main.
     const isAncestor = await $`git merge-base --is-ancestor ${snapshots[0]} HEAD`
       .cwd(repo.path)
       .nothrow()
       .quiet();
     expect(isAncestor.exitCode).toBe(0);
-    const branchAncestor = await $`git merge-base --is-ancestor ${branch} HEAD`
-      .cwd(repo.path)
-      .nothrow()
-      .quiet();
-    expect(branchAncestor.exitCode).toBe(0);
+    // Under squash-merge the branch tip is NOT a git ancestor of the squash
+    // commit (squash creates a new commit). Verify the branch's content
+    // landed instead: fresh.ts must be present in the working tree.
+    expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
   });
 
   test("D2: unstaged tracked modification overlapping an agent-modified file", async () => {
@@ -386,8 +388,8 @@ describe("integrateBranch dirty-repoRoot matrix", () => {
     );
 
     // Create an UNTRACKED file at the same path on repoRoot. Without the
-    // snapshot pre-flight, `git merge --ff-only` would refuse to overwrite an
-    // untracked file. The pre-flight stages and commits it, then -X theirs lets
+    // snapshot pre-flight, the squash merge could fail or silently discard the
+    // file. The pre-flight stages and commits it, then -X theirs lets
     // the agent's version win during rebase.
     await Bun.write(join(repo.path, "fresh.ts"), "// user untracked\n");
 
@@ -496,8 +498,8 @@ describe("integrateMerge strategy", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.fixerIters).toBe(0);
 
-    const log = (await $`git log --oneline main`.cwd(repo.path).quiet()).text();
-    expect(log).toContain("fresh feature");
+    // Squash lands agent's content in a single commit; verify via working tree.
+    expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
   });
 
   test("integrateMerge auto-resolves content conflict to agent via -X theirs (I2)", async () => {

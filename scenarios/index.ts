@@ -99,12 +99,14 @@ async function assertHappyPathCleanup(repoRoot: string): Promise<string | undefi
     }
   }
 
-  // The summary-writer phase commits `docs(changelog): <message>` after the
-  // agent's work commits but before the integrate ff-merge. A successful merge
-  // integration leaves that commit at the top of main.
+  // The squash-merge lands all agent commits (including the summary-writer's
+  // docs(changelog) commit) as a single squash commit on main. The squash
+  // commit's subject is the `commitMessage` emitted by the summary writer.
+  // Verify that main advanced past the seed commit (logLines.length >= 2 already
+  // checked above) and that the squash commit has a non-empty subject.
   const headSubject = (await $`git log -1 --format=%s main`.cwd(repoRoot).quiet()).text().trim();
-  if (!headSubject.startsWith("docs(changelog):")) {
-    return `expected HEAD of main to be a docs(changelog) commit; got: ${JSON.stringify(headSubject)}`;
+  if (!headSubject) {
+    return `expected HEAD of main to have a non-empty commit subject after squash-merge; got empty`;
   }
 
   return undefined;

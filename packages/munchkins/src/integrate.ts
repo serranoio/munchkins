@@ -93,7 +93,7 @@ export async function rebaseAndResolve(
   say(`rebase: onto ${baseBranch}`);
   // `-X theirs` resolves content conflicts in favor of the side being replayed
   // (the agent's commits). This lets `integrateBranch`'s dirty-tree pre-flight
-  // snapshot commit lose to the agent on overlap, so the rebase + ff-merge
+  // snapshot commit lose to the agent on overlap, so the rebase + squash-merge
   // path completes without manual fixer involvement. For clean rebases the
   // flag is a no-op.
   let rebase = await $`git rebase -X theirs ${baseBranch}`.cwd(workdir).nothrow().quiet();
@@ -194,25 +194,36 @@ export async function rebaseAndResolve(
 }
 
 export interface IntegrateOptions extends RebaseAndResolveOptions {
-  /** Branch to ff-merge into `baseBranch` after the rebase succeeds. */
+  /** Branch to squash-merge into `baseBranch` after the rebase succeeds. */
   branch: string;
   /** Separate checkout of the same repo with `baseBranch` checked out. */
   repoRoot: string;
+  /** Subject line for the squash commit. Falls back to `agent: <branch>` when absent. */
+  commitMessage?: string;
+  /** Body appended to the squash commit message. Omitted when absent. */
+  markdownSummary?: string;
 }
 
 export type IntegrateResult = RebaseAndResolveResult;
 
 /**
- * `rebaseAndResolve` + fast-forward `baseBranch` to the rebased tip in
+ * `rebaseAndResolve` + squash-merge `baseBranch` to the rebased tip in
  * `repoRoot`. Use when you want the agent's branch to actually land on the
- * parent branch (S1 / S3 use cases). For flows that just need the rebase to
- * happen — e.g. preparing a branch for a PR (S2 / S4) — call
- * `rebaseAndResolve` directly.
+ * parent branch as a single commit (S1 / S3 use cases). For flows that just
+ * need the rebase to happen — e.g. preparing a branch for a PR (S2 / S4) —
+ * call `rebaseAndResolve` directly.
  *
  * `workdir` and `repoRoot` must be two checkouts of the same repository:
  * `workdir` has the branch to rebase, `repoRoot` has `baseBranch`. Worktrees
  * are the most ergonomic source of that pairing but any two-checkout setup
  * works.
+ *
+ * The squash commit is authored as `munchkins / munchkins@local`. Its subject
+ * is `opts.commitMessage ?? "agent: <branch>"` and its body is
+ * `opts.markdownSummary` (omitted when absent). Branch deletion is left to
+ * the caller's `teardown` (which removes the worktree first, then force-deletes
+ * the branch — a prerequisite since git refuses to delete a branch in use by a
+ * worktree).
  */
 export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
   const snapshotResult = await snapshotDirtyRepoRoot(opts);
@@ -221,15 +232,36 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
   const r = await rebaseAndResolve(opts);
   if (!r.ok) return r;
 
-  opts.log?.(`integrate: fast-forward ${opts.baseBranch} -> ${opts.branch}`);
-  const ff = await $`git merge --ff-only ${opts.branch}`.cwd(opts.repoRoot).nothrow().quiet();
-  if (ff.exitCode !== 0) {
+  const subject = opts.commitMessage ?? `agent: ${opts.branch}`;
+  const fullMessage = opts.markdownSummary ? `${subject}\n\n${opts.markdownSummary}` : subject;
+
+  opts.log?.(`integrate: squash-merge ${opts.baseBranch} <- ${opts.branch}`);
+  const squash = await $`git merge --squash ${opts.branch}`.cwd(opts.repoRoot).nothrow().quiet();
+  if (squash.exitCode !== 0) {
     return {
       ok: false,
-      reason: `ff-merge failed despite clean rebase: ${ff.stderr.toString().slice(-500)}`,
+      reason: `squash merge failed despite clean rebase: ${squash.stderr.toString().slice(-500)}`,
       fixerIters: r.fixerIters,
     };
   }
+
+  const squashCommit =
+    await $`git -c user.name=munchkins -c user.email=munchkins@local commit -m ${fullMessage}`
+      .cwd(opts.repoRoot)
+      .nothrow()
+      .quiet();
+  if (squashCommit.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `squash commit failed: ${squashCommit.stderr.toString().slice(-500)}`,
+      fixerIters: r.fixerIters,
+    };
+  }
+
+  // Branch deletion is intentionally left to `sandboxHandle.teardown`: the
+  // worktree is still attached to the branch at this point, and git refuses
+  // to delete a branch that a worktree is sitting on. `teardown` removes the
+  // worktree first, then calls `deleteBranch` (which uses `git branch -D`).
 
   return r;
 }
@@ -284,6 +316,8 @@ export function integrateMerge(): IntegrationStrategy {
         postFixChecks: ctx.postFixChecks,
         onFixerInvocation: ctx.onFixerInvocation,
         log: ctx.log,
+        commitMessage: ctx.commitMessage,
+        markdownSummary: ctx.markdownSummary,
       });
     },
   };
@@ -429,14 +463,14 @@ async function createGitlabMR(
 /**
  * If `repoRoot` has any dirty/staged/untracked content, stage all of it and
  * commit it on `baseBranch` as a single snapshot. Without this pre-flight the
- * subsequent `git merge --ff-only` would refuse (dirty tracked changes) or the
- * untracked file would collide with an agent-created path. The snapshot commit
- * is the recovery anchor: the user can find it via
+ * subsequent squash merge could fail on dirty tracked changes or an untracked
+ * file could collide with an agent-created path. The snapshot commit is the
+ * recovery anchor: the user can find it via
  * `git log --grep="munchkins: pre-merge snapshot"` and resurrect individual
  * files with `git show <sha>:<path>`.
  *
  * Returns `undefined` when `repoRoot` was already clean (the caller proceeds
- * with the existing rebase + ff-merge path unchanged). Returns an
+ * with the existing rebase + squash-merge path unchanged). Returns an
  * `IntegrateResult` only on failure.
  */
 async function snapshotDirtyRepoRoot(opts: IntegrateOptions): Promise<IntegrateResult | undefined> {
