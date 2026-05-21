@@ -97,6 +97,24 @@ async function assertDirectorBranchesCleaned(sandbox: string): Promise<string | 
   return undefined;
 }
 
+function assertDispatchArgvShape(argv: string, label: string): string | undefined {
+  if (!argv.includes("--branch-prefix=director")) {
+    return `${label} dispatch argv missing --branch-prefix=director (inflight survey on subsequent ticks depends on this prefix): ${argv}`;
+  }
+  const userMsgMatch = argv.match(/--user-message=(\S+)/);
+  if (!userMsgMatch) {
+    return `${label} dispatch argv missing --user-message=<plan-path>: ${argv}`;
+  }
+  // Plan file existence at dispatch time is proven by dispatch.ts exiting 0
+  // (its existence check is at packages/serrano-munchkins/agents/director/scripts/dispatch.ts).
+  // We assert the path shape — must point at the director's plan.md under .director/.
+  const planPath = userMsgMatch[1];
+  if (!/\.director\/[^/]+\/plan\.md$/.test(planPath)) {
+    return `${label} --user-message path does not match .director/<run>/plan.md shape: ${planPath}`;
+  }
+  return undefined;
+}
+
 function assertTickArtifacts(): string | undefined {
   if (!existsSync(artifactDir)) return `artifact dir missing: ${artifactDir}`;
   const entries = readdirSync(artifactDir).filter((name) => {
@@ -237,6 +255,8 @@ async function run(): Promise<ScenarioResult> {
         `tick 1 routed to "${childLogAfterTick1[0].child}"; expected "bug-fix"`,
       );
     }
+    const dispatchArgvErr = assertDispatchArgvShape(childLogAfterTick1[0].argv, "tick 1");
+    if (dispatchArgvErr) return failResult("assertion", dispatchArgvErr);
 
     // ── Tick 2 ───────────────────────────────────────────────────────────────
     if (!pendingCallback) {
@@ -257,6 +277,8 @@ async function run(): Promise<ScenarioResult> {
         `tick 2 routed to "${childLog[1].child}"; expected "refactor"`,
       );
     }
+    const tick2ArgvErr = assertDispatchArgvShape(childLog[1].argv, "tick 2");
+    if (tick2ArgvErr) return failResult("assertion", tick2ArgvErr);
 
     const distinctChildren = new Set(childLog.map((c) => c.child));
     if (distinctChildren.size !== 2) {
