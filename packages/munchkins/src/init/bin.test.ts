@@ -167,9 +167,9 @@ describe("runInit", () => {
 
     await runInit({ cwd, packageRoot, templatePath });
 
-    expect(
-      existsSync(join(cwd, ".claude", "skills", "munchkins-test-skill", "SKILL.md")),
-    ).toBe(true);
+    expect(existsSync(join(cwd, ".claude", "skills", "munchkins-test-skill", "SKILL.md"))).toBe(
+      true,
+    );
   });
 
   test("prints the post-init next-step hint pointing at /munchkins:new-munchkin", async () => {

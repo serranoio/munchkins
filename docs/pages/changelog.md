@@ -4,6 +4,91 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(packages): split framework from dogfood agents into serrano-munchkins (85e1405)
+**2026-05-20 20:38 PDT · feat-small · 512.9s · $4.4392**
+
+**Goal:** Collapse the framework/defaults two-package split into a single published framework (`@serranolabs.io/munchkins`) and move the four dogfood agents + their skills into a new private workspace (`@serranolabs.io/serrano-munchkins`). Replace `bun run munchkins skills install` with a `bunx munchkins-init` bootstrap that scaffolds a consumer's `agentRegistry.ts`, wires the `"munchkins"` script, and installs bundled skills.
+
+**Outcome:** Deleted `packages/munchkins-core/` and merged its source under `packages/munchkins/src/`. Extracted `runCli` from the `import.meta.main` block so consumer registries can call it directly. Added `packages/munchkins/src/init/{bin.ts,agentRegistry.template.ts}` (registered as the `munchkins-init` bin) and moved the old `skills-install.ts` under `src/init/install-skills.ts`. Created `packages/serrano-munchkins/` (private) owning `agentRegistry.ts`, the four agents (`bugfix`, `director`, `feat-small`, `refactor`), their `_shared/presets.ts`, and the four `munchkins-<slug>` skill bodies. Rewrote every `@serranolabs.io/munchkins-core` import in scenarios, agents, presets, root `package.json`, README, and plan docs. Added `scenarios/consumer-bootstrap-e2e.ts` (runs `bun pm pack` → `bun add -D <tarball>` → `bunx munchkins-init` → asserts scaffold, skip-if-exists, stub-agent visibility, and `MUNCHKINS_CHANGELOG_PATH` honored on direct `bun run ./agentRegistry.ts`). Added `scripts/onboarding-smoke.ts` (TypeScript) for the contributor clean-clone path. Rewrote `docs/pages/internal/plans/todo.md` §5 and the README "Onboarding" section.
+
+**How to test manually:**
+
+1. Run the full gate from the worktree root:
+   ```
+   bun install
+   bun run typecheck && bun run lint && bun test && bun run scenario
+   ```
+   All four must exit 0. `bun run scenario` now includes `consumer-bootstrap-e2e.ts` as its 7th step — that's the most load-bearing new test.
+
+2. Confirm the directory restructure:
+   ```
+   test ! -d packages/munchkins-core && echo OK
+   test -d packages/serrano-munchkins && test -f packages/serrano-munchkins/agentRegistry.ts && echo OK
+   test -f packages/munchkins/src/init/bin.ts && test -f packages/munchkins/src/init/agentRegistry.template.ts && echo OK
+   ```
+
+3. Confirm zero residual references to the old package name (excluding plan/changelog history files, which intentionally still mention the rename):
+   ```
+   rg "@serranolabs.io/munchkins-core" --type ts --type json
+   ```
+   Expect zero matches in `.ts`/`.json` (markdown history under `docs/pages/internal/` and `docs/pages/changelog.md` will still contain old references — that's expected since they're durable design records).
+
+4. Confirm the dogfood CLI surface is intact:
+   ```
+   bun run munchkins --help
+   ```
+   The output must list `bug-fix`, `feat-small`, `refactor`, `director` (the four dogfood agents) plus `resume`, `status`, `daemon` (framework commands). It must NOT list `skills` (removed) or any agent twice.
+
+5. Smoke the consumer bootstrap by hand (the scenario covers this, but this is the out-of-band check):
+   ```
+   cd $(mktemp -d) && git init -q && echo '{"name":"smoke","private":true,"type":"module"}' > package.json
+   bun pm pack --destination . --cwd <worktree>/packages/munchkins
+   bun add -D ./serranolabs.io-munchkins-*.tgz
+   bun ./node_modules/@serranolabs.io/munchkins/src/init/bin.ts
+   ```
+   Verify: `agentRegistry.ts` exists, `package.json` `scripts.munchkins` is `"bun run ./agentRegistry.ts"`, and `.claude/skills/munchkins-{new-munchkin,launch-munchkin}/SKILL.md` are present. Then `bun run munchkins --help` should list only `resume`, `status`, `daemon` — zero agent commands. Re-run `bun ./node_modules/.../bin.ts` with an edited skill body and confirm the edit survives (skip-if-exists).
+
+6. Run the contributor smoke against a fresh clone:
+   ```
+   bun run scripts/onboarding-smoke.ts
+   ```
+   This clones the local repo into a tmpdir, runs `bun install` + typecheck + lint + test, asserts `--help` lists the four dogfood agents, and runs `bug-fix --dry-run` to confirm the command resolves. Add `--with-scenario` to also run the scenario gate inside the clone.
+
+7. Sanity-check the workspace symlink risk called out in the plan:
+   ```
+   bun install && ls -la node_modules/@serranolabs.io/serrano-munchkins
+   ```
+   Must show a symlink into `packages/serrano-munchkins`. If this is missing, the dogfood scenarios that `import "@serranolabs.io/serrano-munchkins"` will fail.
+
+**Files changed:**
+
+- `package.json` (root) — `munchkins` script now points at `packages/serrano-munchkins/agentRegistry.ts`; dev-dep renamed.
+- `packages/munchkins/package.json` — declares `munchkins` + `munchkins-init` bins, drops `munchkins-core` dep, picks up `commander` + `cron-parser` directly.
+- `packages/munchkins/src/index.ts` — re-exports the framework surface, defines `runCli`, no longer side-effect-imports any agents.
+- `packages/munchkins/src/init/bin.ts` (new) + `packages/munchkins/src/init/bin.test.ts` (new) + `packages/munchkins/src/init/agentRegistry.template.ts` (new).
+- `packages/munchkins/src/init/install-skills.ts` + `install-skills.test.ts` (moved from `packages/munchkins/src/skills-install*`).
+- `packages/munchkins/src/{builder,registry,resume,sandbox,scheduler,status}/**`, `packages/munchkins/src/{integrate,run-log,worktree}.ts` and tests (moved from `packages/munchkins-core/src/...`).
+- `packages/munchkins/src/cmux-launcher.ts` + test — dropped `skills` from the non-agent subcommand set.
+- `packages/munchkins/src/register-skills-command.{ts,test.ts}` (deleted).
+- `packages/munchkins-core/` (deleted).
+- `packages/serrano-munchkins/package.json` (new), `agentRegistry.ts` (new), `tsconfig.json` (new).
+- `packages/serrano-munchkins/agents/{_shared,bugfix,director,feat-small,refactor,bugfix-then-refactor}/**` (moved from `packages/munchkins/agents/...`, imports rewritten).
+- `packages/serrano-munchkins/skills/munchkins-{bug-fix,director,feat-small,refactor}/SKILL.md` (moved from `packages/munchkins/skills/...`).
+- `.claude/skills/munchkins-{bug-fix,director,feat-small,refactor}` symlinks repointed to `packages/serrano-munchkins/skills/...`.
+- `scenarios/consumer-bootstrap-e2e.ts` (new) + `package.json` `scenario` script extended.
+- `scenarios/{index,composition,dirty-main-e2e,bugfix-pr-integrate-e2e,director-multi-dispatch-e2e,agent-uncommitted-smoke-e2e,resume-after-claude-exit-e2e}.ts` — import paths + skill source paths rewritten.
+- `scripts/onboarding-smoke.ts` (new).
+- `scripts/release.ts` — releases only `packages/munchkins/package.json` now.
+- `.github/workflows/publish.yml` — drops the `munchkins-core` version check + workspace dep rewrite + `munchkins-core` publish step.
+- `bun.lock` — workspace topology updated.
+- `README.md` — Onboarding section rewritten around `bunx munchkins-init`; default-agents table removed.
+- `AGENTS.md` — Where-things-live table + workspace prose updated for the split.
+- `docs/pages/internal/plans/todo.md` §5 — rewritten to acceptance criteria from the plan.
+- `docs/pages/internal/{plans/framework-consumer-split,plans/director-and-performance,plans/todo,diagnosis,prd,plan,scenario-testing-strategy,technology-decisions,hitl/*,add-skill/*}.md` — durable design refs updated.
+- `packages/munchkins/skills/munchkins-new-munchkin/SKILL.md` — source-repo vs consumer-repo detection rewritten for the new layout.
+- `docs/pages/agents/custom.md`, `docs/pages/changelog.md` — import-path examples updated.
+
+---
 ## refactor(builder): extract isDryRunRequested helper (14a89e2)
 **2026-05-20 18:05 PDT · feat-small · 484.0s · $2.7167**
 
