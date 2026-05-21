@@ -386,10 +386,15 @@ export class AgentBuilder {
       markInterrupted();
     }
 
+    // Dry-run skips summary writer + integration + teardown: agent steps did not
+    // call Claude, so the worktree only holds deterministic-step artifacts; there
+    // is no diff worth summarizing and nothing to merge.
+    const isDryRun = process.env.__MUNCHKINS_OPT_dryRun === "true";
+
     // Summary writer phase — runs after main steps succeed, before integration.
     let commitMessage: string | undefined;
     let summaryStep = state.steps.find((s) => s.kind === "summary");
-    if (!failureReason && this.summaryWriterPrompt && sandboxHandle?.diff) {
+    if (!failureReason && !isDryRun && this.summaryWriterPrompt && sandboxHandle?.diff) {
       if (!summaryStep) {
         summaryStep = {
           index: this.steps.length,
@@ -428,7 +433,7 @@ export class AgentBuilder {
 
     // Integration phase — strategy precedence: operator flag > author > default.
     let prUrl: string | undefined;
-    if (sandboxHandle && !failureReason) {
+    if (sandboxHandle && !failureReason && !isDryRun) {
       state.phase = "integrating";
       saveState(runLogDir, state);
       // No-op if no rebase active; tolerates resume mid-rebase.
@@ -715,6 +720,23 @@ export class AgentBuilder {
     const { systemPrompt, userPrompt } = step.prompt.resolve(repoRoot);
     logger.agentStepStart(stepIndex, this.steps.length, systemPrompt, userPrompt);
     const startTime = Date.now();
+
+    // Dry-run skip: handlesDryRun() agents (like director) reach this code path
+    // because they opt out of the outer _printDescribe short-circuit. For those,
+    // agent steps must still skip Claude — the prompts are already printed above;
+    // the run log captures the resolved prompts with an empty response.
+    if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
+      const durationMs = Date.now() - startTime;
+      const emptyUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      };
+      logger.stepResultOk(durationMs, emptyUsage);
+      runLog.agentStep(stepIndex, systemPrompt, userPrompt, "", 0, durationMs);
+      return;
+    }
 
     const persistSessionId = (sid: string) => {
       stepState.sessionId = sid;

@@ -47,6 +47,28 @@ non-fixture repo lands a real commit on `main` and the worktree is cleaned.
   the pipeline without spawning real claude (verify via the env-only
   configuration; OR confirm the spawn IS happening by inspecting run-log).
 
+**Progress (2026-05-20):**
+- AC1 partially landed. Steps 1–6 of `--dry-run` now complete in <1 s
+  (was 9+ min). Two patches: `runAgent` short-circuits Claude when
+  `__MUNCHKINS_OPT_dryRun=true`; summary-writer + integration phases
+  gated on `!isDryRun`; `dispatch.ts` short-circuit moved above the
+  `triage.json`/`plan.md` existence check (since agent steps no longer
+  write those in dry-run). Pending for AC1: the deterministic fixer
+  inside `runDeterministic` still calls Claude on a failed
+  `DEFAULT_CHECKS` iteration — same skip needed there — and the
+  underlying `bun run lint/typecheck/scenario` failures inside step
+  7 (currently masking the dry-run exit code) need diagnosis or a
+  separate "skip DEFAULT_CHECKS in dry-run" decision.
+- AC4 partially: schedule is hardcoded in `director-agent.ts:42`
+  (`*/10 * * * *`), verifiable by source read; no `crons` /
+  `registry list` subcommand exists today.
+- AC2/AC3/AC5: not started — gated on AC1 exiting 0.
+- Adjacent harness fix landed in `scenarios/lib/mock-spawn-claude.ts`
+  (commit ahead of origin): `setupAuditGuard()` now scrubs leaked
+  `__MUNCHKINS_OPT_*` env vars so scenarios invoked under a parent
+  process running `--dry-run` no longer inherit dry-run and
+  short-circuit `agent.run()` with zero mock calls.
+
 ---
 
 ## 3. Validate the GitHub PR integration strategy

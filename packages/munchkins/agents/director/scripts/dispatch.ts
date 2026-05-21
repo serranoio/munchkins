@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // Step 6 — Dispatch. Reads triage.json + plan.md, derives the target munchkin
 // from work_type, then runs the child as a foreground subprocess. Early-exits
-// on upstream idle and short-circuits to a print-only path when
-// $__MUNCHKINS_OPT_dryRun is "true".
+// on upstream idle. In dry-run, agent steps were skipped so triage.json won't
+// exist — this step short-circuits before the file-existence check.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,6 +24,15 @@ if (!RUN_ID) {
 const RUN_DIR = join(WORKDIR, ".director", RUN_ID);
 const TRIAGE = join(RUN_DIR, "triage.json");
 const PLAN = join(RUN_DIR, "plan.md");
+
+// Dry-run short-circuit: agent steps skipped Claude, so triage.json / plan.md
+// won't exist. Print the would-be dispatch shape (work_type unknown) and exit 0.
+if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
+  console.log(
+    "[director] dispatch (dry-run): would dispatch child munchkin based on triage.json work_type (skipped — agent steps not invoked)",
+  );
+  process.exit(0);
+}
 
 // Upstream-idle guard: if any upstream artifact says idle, exit 0.
 const idleRe = /"idle"\s*:\s*true/;
@@ -69,11 +78,6 @@ const cmd = [
   `--user-message=${PLAN}`,
   "--branch-prefix=director",
 ];
-
-if (process.env.__MUNCHKINS_OPT_dryRun === "true") {
-  console.log(`[director] dispatch (dry-run): ${cmd.join(" ")}`);
-  process.exit(0);
-}
 
 console.log(`[director] dispatch: ${cmd.join(" ")}`);
 const proc = Bun.spawn(cmd, { cwd: REPO, stdout: "inherit", stderr: "inherit" });
