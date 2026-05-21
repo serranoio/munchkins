@@ -51,15 +51,7 @@ const shimDir = join(harnessDir, "lib", "fake-claude-bin");
 // Subprocess CLI invocation goes through the dogfood agentRegistry.ts so the
 // four default agents are registered when the resume codepath looks them up.
 const munchkinsBin = join(repoRoot, "packages", "serrano-munchkins", "agentRegistry.ts");
-const spawnClaudeAbsPath = join(
-  harnessDir,
-  "..",
-  "packages",
-  "munchkins",
-  "src",
-  "builder",
-  "spawn-claude.ts",
-);
+const spawnClaudeAbsPath = join(repoRoot, "packages", "munchkins", "src", "builder", "spawn-claude.ts");
 
 const artifactDir = join(repoRoot, ".scenario-artifacts", `${SCENARIO_ID}-${HARNESS_TS}`);
 
