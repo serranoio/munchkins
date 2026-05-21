@@ -3,7 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PACKAGE_NAME = "@serranolabs.io/munchkins";
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// install-skills.ts lives at packages/munchkins/src/init/install-skills.ts; the
+// framework's bundled skills/ dir is two levels up.
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 interface SkillSource {
   pkgName: string;

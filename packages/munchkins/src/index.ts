@@ -84,12 +84,10 @@ import { registerResumeCommand } from "./resume/command.js";
 import { registerDaemonCommand } from "./scheduler/command.js";
 import { registerStatusCommand } from "./status/command.js";
 import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
-import { registerSkillsCommand } from "./register-skills-command.js";
 
 registerResumeCommand(registry);
 registerStatusCommand(registry);
 registerDaemonCommand(registry);
-registerSkillsCommand(registry);
 
 export interface RunCliOptions {
   argv: readonly string[];

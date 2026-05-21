@@ -74,7 +74,6 @@ describe("shouldDelegateToCmux", () => {
     ["daemon"],
     ["resume"],
     ["status"],
-    ["skills"],
   ])("returns false when argv[2] is meta-subcommand %s", (sub) => {
     expect(
       shouldDelegateToCmux({

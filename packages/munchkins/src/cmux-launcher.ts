@@ -1,9 +1,4 @@
-const NON_AGENT_SUBCOMMANDS: ReadonlySet<string> = new Set([
-  "daemon",
-  "resume",
-  "status",
-  "skills",
-]);
+const NON_AGENT_SUBCOMMANDS: ReadonlySet<string> = new Set(["daemon", "resume", "status"]);
 
 const ARGV_SKIP_FLAGS: ReadonlySet<string> = new Set([
   "--no-cmux",
