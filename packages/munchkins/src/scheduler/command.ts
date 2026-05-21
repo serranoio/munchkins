@@ -9,6 +9,21 @@ export function registerDaemonCommand(registry: AgentRegistry): void {
       cmd.action(async () => {
         await runDaemon();
       });
+      cmd
+        .command("list")
+        .description("List cron-armed builders without arming the daemon.")
+        .action(() => {
+          const lines: string[] = [];
+          for (const name of registry.list()) {
+            const cron = registry.get(name)?.getCron();
+            if (cron) lines.push(`${name}\t${cron.spec}`);
+          }
+          if (lines.length === 0) {
+            process.stdout.write("(no cron-armed builders registered)\n");
+            return;
+          }
+          process.stdout.write(`${lines.join("\n")}\n`);
+        });
     },
   });
 }

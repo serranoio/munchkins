@@ -41,8 +41,9 @@ non-fixture repo lands a real commit on `main` and the worktree is cleaned.
 - [ ] Inflight survey detects the dispatched child's branch on a subsequent
   tick — the director should NOT re-dispatch the same slice while it's in
   flight.
-- [ ] `bun run munchkins crons` (or equivalent registry listing) shows
-  director with schedule `*/10 * * * *`.
+- [x] `bun run munchkins daemon list` shows director with schedule
+  `*/10 * * * *`. (Nested under `daemon` rather than a top-level `crons`
+  command — operator runs it before `daemon` to confirm what will fire.)
 - [ ] `bun run munchkins daemon` arms the director and the first tick fires
   the pipeline without spawning real claude (verify via the env-only
   configuration; OR confirm the spawn IS happening by inspecting run-log).
