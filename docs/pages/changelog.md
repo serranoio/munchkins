@@ -4,6 +4,32 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(builder): extract isDryRunRequested helper (14a89e2)
+**2026-05-20 18:05 PDT · feat-small · 484.0s · $2.7167**
+
+**Goal:** Framework / consumer split + onboarding test design — pre-ship restructure that moves the 4 default agents out of the published package, deletes `munchkins-core`, adds a `munchkins-init` bootstrap bin, and adds consumer + contributor onboarding scenarios.
+
+**Outcome:** This step is a small DRY cleanup inside `packages/munchkins-core/src/builder/agent-builder.ts`: the three inline `process.env.__MUNCHKINS_OPT_dryRun === "true"` checks at the dry-run guard points in `run()`, the post-steps integration gate, and the per-step Claude skip are replaced with a single private `isDryRunRequested()` helper. Behavior is unchanged. None of the larger slices in the plan (workspace split, `munchkins-init`, scenario scaffolding) have landed yet — this just consolidates the env-var read so subsequent slices have one call site to repoint if the dry-run signal moves.
+
+**How to test manually:**
+
+1. From the repo root, run the existing scenario harness to confirm dry-run still short-circuits the agent steps as before:
+   - `bun run scenario`
+   - Expect: green. The harness exercises dry-run paths through the builder; any regression in the three rewritten branches would surface as a scenario failure or as agent steps unexpectedly calling the mocked `spawnClaude`.
+2. Spot-check the dry-run guard end-to-end by invoking a dogfood agent with `--dry-run`:
+   - `bun run munchkins bug-fix --dry-run --user-message="noop"`
+   - Expect: the agent prints its describe block and exits with `succeeded: true`; no worktree is created, no commits land, no summary writer runs.
+3. Confirm the helper is the only reader of the env var inside `agent-builder.ts`:
+   - `rg "__MUNCHKINS_OPT_dryRun" packages/munchkins-core/src/builder/agent-builder.ts`
+   - Expect: exactly one match, inside the `isDryRunRequested` function body. Other matches elsewhere in the repo (CLI flag plumbing, tests) are fine and out of scope for this change.
+4. Edge case — verify the inner per-step dry-run branch still records an empty-usage Claude call in the run log rather than actually spawning Claude. Easiest path: re-run step 2 and inspect the most recent run-log directory under `.munchkins/runs/`; the per-step `claude.json` (or equivalent run-log entry) should show zero input/output tokens and an empty response.
+
+**Files changed:**
+
+- packages/munchkins-core/src/builder/agent-builder.ts
+
+
+---
 ## feat(scenarios): cover bug-fix flow end-to-end for todo #1 (6af7dfe)
 **2026-05-20 17:26 PDT · feat-small · 173.9s · $8.9340**
 
