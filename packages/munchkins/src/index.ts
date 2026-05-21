@@ -10,21 +10,31 @@ import { registerSkillsCommand } from "./register-skills-command.js";
 
 registerSkillsCommand(registry);
 
-if (import.meta.main) {
+export interface RunCliOptions {
+  argv: readonly string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
+export async function runCli(opts: RunCliOptions): Promise<void> {
   const hasCmux = Bun.which("cmux") !== null;
-  if (shouldDelegateToCmux({ argv: process.argv, env: process.env, hasCmux })) {
+  if (shouldDelegateToCmux({ argv: opts.argv, env: opts.env, hasCmux })) {
     const { command, workspaceName } = buildCmuxCommand({
-      argv: process.argv,
-      cwd: process.cwd(),
+      argv: opts.argv,
+      cwd: opts.cwd,
       now: Date.now(),
-      env: process.env,
+      env: opts.env,
     });
-    const agentName = process.argv[2];
+    const agentName = opts.argv[2];
     process.stdout.write(`Launching ${agentName} in cmux workspace: ${workspaceName}\n`);
     const proc = Bun.spawn(command, { stdout: "inherit", stderr: "inherit" });
     process.exit(await proc.exited);
   }
 
-  const argv = process.argv.filter((a) => a !== "--no-cmux");
+  const argv = opts.argv.filter((a) => a !== "--no-cmux");
   await registry.cli().parseAsync(argv);
+}
+
+if (import.meta.main) {
+  await runCli({ argv: process.argv, cwd: process.cwd(), env: process.env });
 }
