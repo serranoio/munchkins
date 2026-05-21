@@ -4,6 +4,36 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(scenarios): cover bug-fix flow end-to-end for todo #1 (6af7dfe)
+**2026-05-20 17:26 PDT · feat-small · 173.9s · $8.9340**
+
+**Goal:** Extend scenario coverage so each acceptance bullet in `docs/pages/internal/plans/todo.md` entry #1 ("Validate the bug-fix flow end-to-end") is exercised against the `bug-fix` agent end-to-end, and flip the four checkboxes.
+
+**Outcome:** Added a new `scenarios/bugfix-pr-integrate-e2e.ts` that drives `bug-fix` with `__MUNCHKINS_OPT_integrate=pr` against a bare-repo `origin` and a captured-invocation `gh` shim, and tightened three existing scenarios with the missing post-conditions: a `docs(changelog):` HEAD-of-main assertion in `scenarios/index.ts`, a snapshot-author=`munchkins` assertion in `scenarios/dirty-main-e2e.ts`, and a `munchkins resume --list` CLI subprocess assertion in `scenarios/resume-after-claude-exit-e2e.ts`. Registered the new scenario in `package.json`'s `scenario` script and checked all four boxes in `todo.md` entry #1. Zero real `claude` and zero real `gh` invocations.
+
+**How to test manually:**
+
+1. From the repo root, run the existing scenarios one at a time to confirm the new in-place assertions hold:
+   - `bun run scenarios/index.ts` — expect `result: pass`; if you grep the artifact JSON you should not see `expected HEAD of main to be a docs(changelog) commit`.
+   - `bun run scenarios/dirty-main-e2e.ts` — expect `result: pass`; the new author check fails loudly if a snapshot author is not `munchkins`.
+   - `bun run scenarios/resume-after-claude-exit-e2e.ts` — expect `result: pass`; the new CLI block actually spawns `bun packages/munchkins/src/index.ts resume --list` and asserts the runId is in stdout.
+2. Run the new PR scenario in isolation: `bun run scenarios/bugfix-pr-integrate-e2e.ts`. Expect `result: pass`. To inspect what the fake `gh` saw, re-run with `--preserve` and then `cat .scenario-artifacts/bugfix-pr-integrate-e2e-*/gh.log` — you should see exactly one line whose `argv` begins `["pr","create"]` and whose `flags` includes `base: "main"`, a non-empty `title`, and a `body` containing `**Goal:**`.
+3. Force-fail the new assertion to convince yourself it isn't vacuous: temporarily change `**Goal:**` to `**Nope:**` in `scenarios/bugfix-pr-integrate-e2e.ts`, rerun the scenario, and confirm it fails with the body-marker message. Revert.
+4. Run the full pipeline: `bun run scenario`. Expect all seven scenarios to pass top-to-bottom. Also run `bun run lint` and `bun run typecheck` and expect clean exits.
+5. Edge check — fresh-clone executability of the shim: `chmod -x scenarios/lib/fake-gh-bin/gh && bun run scenarios/bugfix-pr-integrate-e2e.ts`. The scenario re-applies `0o755` at startup, so it should still pass; this proves the +x preservation step in the scenario isn't ornamental.
+6. Open `docs/pages/internal/plans/todo.md` and confirm all four bullets under section `## 1. Validate the bug-fix flow end-to-end` are `- [x]`, and the three other todo entries remain `- [ ]`.
+
+**Files changed:**
+
+- docs/pages/internal/plans/todo.md
+- package.json
+- scenarios/bugfix-pr-integrate-e2e.ts
+- scenarios/dirty-main-e2e.ts
+- scenarios/index.ts
+- scenarios/lib/fake-gh-bin/gh
+- scenarios/resume-after-claude-exit-e2e.ts
+
+---
 ## feat(integrate): tolerate dirty repoRoot on ff-merge via snapshot commit (7fa9c95)
 **2026-05-19 15:40 PDT · feat-small · 1640.6s · $12.4510**
 
