@@ -48,7 +48,9 @@ const seedRepoDir = join(fixtureDir, "seed-repo");
 const phase1ResponsesDir = join(fixtureDir, "mock-claude-responses-phase1");
 const phase2ResponsesDir = join(fixtureDir, "mock-claude-responses-phase2");
 const shimDir = join(harnessDir, "lib", "fake-claude-bin");
-const munchkinsBin = join(repoRoot, "packages", "munchkins", "src", "index.ts");
+// Subprocess CLI invocation goes through the dogfood agentRegistry.ts so the
+// four default agents are registered when the resume codepath looks them up.
+const munchkinsBin = join(repoRoot, "packages", "serrano-munchkins", "agentRegistry.ts");
 const spawnClaudeAbsPath = join(
   harnessDir,
   "..",
