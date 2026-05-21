@@ -139,25 +139,37 @@ conventions documented in `AGENTS.md`, `CLAUDE.md`, and the
 
 ---
 
-## 5. Validate fresh-clone onboarding
+## 5. Validate fresh-clone onboarding + consumer bootstrap
 
-**Goal:** A new user can clone this repo, follow the README, and produce a
-green munchkin run without manual debugging.
+**Goal:** Two paths are green end-to-end. (a) A contributor can clone this
+repo and produce a real munchkin run. (b) A consumer can `bun add -D` the
+published framework, `bunx munchkins-init`, scaffold an agent via
+`/munchkins:new-munchkin`, and have `bun run munchkins <their-agent>` work.
 
-**Acceptance:**
-- [ ] From an empty directory: `git clone <repo> && cd munchkins && bun install`
-  succeeds without warnings beyond expected workspace-resolution noise.
-- [ ] `bun run typecheck && bun run lint && bun test && bun run scenario`
-  all pass on a fresh clone with no extra env setup.
-- [ ] `bun run munchkins --help` lists all 5 agents (bug-fix, feat-small,
-  refactor, director, bugfix-then-refactor) plus the meta commands
-  (resume, status, daemon, skills).
-- [ ] `bun run munchkins skills install` materializes the bundled skills
-  into `.claude/skills/` and does not overwrite operator edits on re-run.
-- [ ] A consumer-style install in a separate repo: `bun add -D
-  @serranolabs.io/munchkins` followed by `bun run munchkins skills install`
-  produces a working agent invocation against that consumer's `PURPOSE.md`.
-- [ ] No reliance on undocumented env vars beyond what's in the README.
-- [ ] `MUNCHKINS_CHANGELOG_PATH` works without the npm-script wrapper
-  (i.e. a direct `bun run packages/munchkins/src/index.ts` invocation
-  with the env var set produces the same result as `bun run munchkins`).
+### Consumer (`scenarios/consumer-bootstrap-e2e.ts`)
+
+- [ ] `bun add -D <tarball>` succeeds in a clean tmp repo with no warnings
+  beyond expected workspace-resolution noise.
+- [ ] `bunx munchkins-init` scaffolds `agentRegistry.ts`, adds the
+  `"munchkins"` script, and symlinks bundled skills into
+  `.claude/skills/munchkins-{new-munchkin,launch-munchkin}/`.
+- [ ] `bun run munchkins --help` lists `resume`, `status`, `daemon` — and
+  zero agent commands.
+- [ ] Re-running `bunx munchkins-init` preserves operator edits to
+  `.claude/skills/*/SKILL.md` (skip-if-exists).
+- [ ] A hand-scaffolded stub agent appears in `--help` after appending its
+  import to `agentRegistry.ts`. `bun run munchkins stub` runs it end to
+  end.
+- [ ] `MUNCHKINS_CHANGELOG_PATH=foo.md bun run ./agentRegistry.ts stub …`
+  writes the changelog at `foo.md` (no reliance on the npm-script
+  wrapper).
+
+### Contributor (`scripts/onboarding-smoke.ts`)
+
+- [ ] `git clone` → `bun install` → `bun run typecheck && bun run lint &&
+  bun test && bun run scenario` all green.
+- [ ] `bun run munchkins --help` lists the 4 dogfood agents (`bug-fix`,
+  `feat-small`, `refactor`, `director`) plus framework commands
+  (`resume`, `status`, `daemon`).
+- [ ] `bun run munchkins bug-fix --user-message=<trivial>` lands a single
+  commit on `main` and cleans the worktree.
