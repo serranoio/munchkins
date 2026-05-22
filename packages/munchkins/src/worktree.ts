@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { $ } from "bun";
 
@@ -22,6 +23,19 @@ export async function createWorktree(
 
   await $`mkdir -p ${join(repoRoot, WORKTREE_DIR)}`.quiet();
   await $`git worktree add ${path} -b ${branch}`.cwd(repoRoot).quiet();
+
+  // Fresh git worktrees never include node_modules (gitignored), so DEFAULT_CHECKS
+  // like `bun run typecheck` would fail on missing per-workspace deps. Run `bun
+  // install` once in the new worktree to populate them. Skip when there's no
+  // package.json (test fixtures, non-bun trees).
+  if (existsSync(join(path, "package.json"))) {
+    const install = await $`bun install`.cwd(path).nothrow().quiet();
+    if (install.exitCode !== 0) {
+      throw new Error(
+        `createWorktree: bun install failed in ${path}:\n${install.stderr.toString().slice(-1000)}`,
+      );
+    }
+  }
 
   return { path, branch };
 }

@@ -302,6 +302,11 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
     "__MUNCHKINS_OPT_integrate",
     "__MUNCHKINS_OPT_userMessage",
     "__MUNCHKINS_OPT_branchPrefix",
+    // When the test suite is invoked from inside an agent that ran with
+    // --dry-run (e.g. the director's DEFAULT_CHECKS step running `bun test`
+    // in its worktree), leaked __MUNCHKINS_OPT_dryRun=true would short-circuit
+    // every `builder.run()` here and resolve when the test expected a reject.
+    "__MUNCHKINS_OPT_dryRun",
   ];
 
   beforeEach(async () => {
