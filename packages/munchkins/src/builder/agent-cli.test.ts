@@ -336,6 +336,71 @@ describe("ClaudeCLI rate-limit retry", () => {
     expect(calls).toBe(1);
     expect(result.exitCode).toBe(1);
   });
+
+  test("retries on generic 'rate limit' substring (no timestamp) using fallback wait", async () => {
+    const cli = new ClaudeCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          exitCode: 1,
+          output: "Error: you have exceeded your rate limit, try again later",
+          durationMs: 10,
+        };
+      }
+      return { exitCode: 0, output: "post-retry-result", durationMs: 5 };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    // The fallback wait is ~60s; aborting mid-wait proves the retry path was
+    // entered (without this branch the result would have returned immediately
+    // on call 1 with exit code 1).
+    await expect(promise).rejects.toBeDefined();
+    expect(calls).toBe(1);
+  });
+
+  test("'rate limit' matcher is case-insensitive (e.g. 'Rate Limit' in stderr)", async () => {
+    const cli = new ClaudeCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: "",
+        stderr: "Anthropic API Rate Limit exceeded — retry in a moment\n",
+        durationMs: 10,
+      };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    await expect(promise).rejects.toBeDefined();
+    expect(calls).toBe(1);
+  });
+
+  test("HHMM-out-of-range still returns without retry (specific match preserves no-retry semantics)", async () => {
+    // Regression lock for the previous "25:99" test — adding the generic
+    // 'rate limit' matcher must NOT change behavior when a specific format
+    // matched but failed to parse a usable reset time.
+    const cli = new ClaudeCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: "Claude AI usage limit reached at 25:99",
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(1);
+  });
 });
 
 describe("CodexCLI.buildArgs", () => {

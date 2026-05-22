@@ -206,6 +206,8 @@ export abstract class AgentCLI {
 
 const LIMIT_RE_UNIX = /Claude AI usage limit reached\|(\d{10,})/;
 const LIMIT_RE_HHMM = /Claude AI usage limit reached.*?(\d{1,2}:\d{2})/;
+const LIMIT_RE_GENERIC = /rate limit/i;
+const GENERIC_LIMIT_WAIT_MS = 60_000;
 
 function isLimitHit(result: SpawnResult): boolean {
   if (result.exitCode === 0) return false;
@@ -214,8 +216,21 @@ function isLimitHit(result: SpawnResult): boolean {
     LIMIT_RE_UNIX.test(stderr) ||
     LIMIT_RE_UNIX.test(result.output) ||
     LIMIT_RE_HHMM.test(stderr) ||
-    LIMIT_RE_HHMM.test(result.output)
+    LIMIT_RE_HHMM.test(result.output) ||
+    LIMIT_RE_GENERIC.test(stderr) ||
+    LIMIT_RE_GENERIC.test(result.output)
   );
+}
+
+function isGenericLimitOnly(result: SpawnResult): boolean {
+  const stderr = result.stderr ?? "";
+  const matchedSpecific =
+    LIMIT_RE_UNIX.test(stderr) ||
+    LIMIT_RE_UNIX.test(result.output) ||
+    LIMIT_RE_HHMM.test(stderr) ||
+    LIMIT_RE_HHMM.test(result.output);
+  if (matchedSpecific) return false;
+  return LIMIT_RE_GENERIC.test(stderr) || LIMIT_RE_GENERIC.test(result.output);
 }
 
 function parseResetTimestamp(result: SpawnResult, now: Date = new Date()): Date | null {
@@ -327,8 +342,18 @@ export class ClaudeCLI extends AgentCLI {
 
     const result = await this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
     if (!isLimitHit(result)) return result;
-    const resetAt = parseResetTimestamp(result);
-    if (!resetAt) return result;
+    // Prefer the explicit reset timestamp parsed from the "Claude AI usage
+    // limit reached|<unix>" / "...HH:MM" formats. When only the generic
+    // "rate limit" substring matched (no parseable timestamp available),
+    // fall back to a fixed wait. Skip retry if a specific timestamp format
+    // was used but failed to parse (e.g. HH:MM out of range) — that's the
+    // existing don't-retry semantics callers depend on.
+    let resetAt = parseResetTimestamp(result);
+    if (!resetAt) {
+      const onlyGeneric = isGenericLimitOnly(result);
+      if (!onlyGeneric) return result;
+      resetAt = new Date(Date.now() + GENERIC_LIMIT_WAIT_MS);
+    }
     process.stderr.write(`⏳ Claude limit hit, waiting until ${formatLocalTime(resetAt)}\n`);
     await sleepUntil(resetAt, opts.abortSignal);
     return this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
