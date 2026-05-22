@@ -1,6 +1,6 @@
 # Getting started
 
-Install munchkins, run a smoke-test agent to prove the pipeline works against a real backend, then scaffold your first custom agent for this repo.
+Install munchkins, bootstrap the framework into your repo, then scaffold your first project-local agent.
 
 ## Prerequisites
 
@@ -9,32 +9,35 @@ Install munchkins, run a smoke-test agent to prove the pipeline works against a 
 3. **A backend CLI on `PATH`, authenticated.**
    - **`claude`** is the default. Sign in once with `claude` and accept the auth flow.
    - **`codex`** is the alternate backend. Run `codex login` once if you intend to use `--cli=codex`.
-4. **Lint / typecheck / scenario / test scripts** in the host repo's `package.json` (see Install). The deterministic gate calls them by name; any of them can be a no-op, but they must exist.
-5. **Claude Code (optional but recommended).** The fastest path to your first custom agent is the `/new-munchkin` skill, which only runs inside Claude Code. If you don't use Claude Code, you can still build agents by hand — see [Build your own](/agents/custom). Required only for the skill, not for running agents.
+4. **Lint / typecheck / scenario / test scripts** in the host repo's `package.json` (see [Gate scripts](#gate-scripts)). The deterministic gate calls them by name; any of them can be a no-op, but they must exist.
+5. **Claude Code (optional but recommended).** The fastest path to your first custom agent is the `/munchkins:new-munchkin` skill, which only runs inside Claude Code. Without Claude Code you can still build agents by hand — see [Build your own](/agents/custom).
 
 The host repo doesn't have to be the munchkins monorepo — any git repo with the package manager and gate scripts described below will do.
 
 ## Install
 
-In a fresh repo:
+Three commands and you're ready to author your first agent.
 
 ```sh
+# 1. Install the package
 bun add -D @serranolabs.io/munchkins
+
+# 2. Bootstrap — writes .munchkins/config.json, the bundle entry,
+#    a "munchkins" script in package.json, and symlinks the meta-skills
+#    into .claude/skills/ so Claude Code can discover them
+bunx munchkins-init
+
+# 3. Verify the framework is wired up
+bun run munchkins --help
 ```
 
-Then add a `munchkins` script to your `package.json` so you can invoke it without remembering the entry path:
+After step 3 you should see the framework commands `resume`, `status`, `daemon` — **and no agents**. The framework ships zero default agents; you author your own (or copy patterns from the [dogfood agents](https://github.com/serranoio/munchkins/tree/main/packages/serrano-munchkins/agents)).
 
-```json
-{
-  "scripts": {
-    "munchkins": "munchkins"
-  }
-}
-```
+`bunx munchkins-init` is idempotent — safe to re-run. It skips any file that already exists, so consumer edits to `.claude/skills/*/SKILL.md` are never clobbered.
 
-`bun add` puts the `munchkins` binary in `node_modules/.bin`, so `bun run munchkins …` resolves directly. `bunx @serranolabs.io/munchkins …` works as an alternative invocation form.
+## Gate scripts
 
-The deterministic gate the default agents run after each step calls these five commands inside the worktree. Any of them can be a no-op, but they must exist:
+Every agent run finishes with a deterministic gate that calls these five `package.json` scripts inside the worktree. Any of them can be a no-op, but they must exist:
 
 ```json
 {
@@ -43,80 +46,57 @@ The deterministic gate the default agents run after each step calls these five c
     "lint":     "biome check .",
     "typecheck": "tsc --noEmit",
     "scenario": "echo 'no scenario harness'",
-    "test":     "echo 'no tests' "
+    "test":     "echo 'no tests'"
   }
 }
 ```
 
 Use whichever lint/typecheck/test runners your project already prefers. The agent invokes them as plain shell, not Bun-specific tasks.
 
-Finally, install the bundled Claude Code skills so the `/new-munchkin` and `/launch-munchkin` triggers are discoverable from inside Claude Code:
-
-```sh
-bun run munchkins skills install
-```
-
-This copies every skill shipped with `@serranolabs.io/munchkins` into `.claude/skills/` in the current working directory. Override the destination with `--dest <path>` (or `-d <path>`).
-
-## Proof of life: run the bug-fix agent
-
-This is a smoke test. It validates that install worked, the gate scripts are wired correctly, and the backend CLI is authenticated — before you invest in a 15-minute skill interview to build a custom agent.
-
-Create a short markdown spec at `scratch/first-bug.md`:
-
-```markdown
-# Fix add() in src/math.ts
-
-`add(a, b)` currently returns `a - b`. Change it to return `a + b`.
-
-## Acceptance criteria
-
-- `add(2, 3) === 5`
-- The exported signature does not change.
-
-## Out of scope
-
-- Anything outside `src/math.ts`.
-```
-
-Then run:
-
-```sh
-bun run munchkins bug-fix --user-message=./scratch/first-bug.md
-```
-
-What you should see, roughly in order:
-
-1. **Worktree spawn.** A fresh checkout under `.worktrees/bug-fix-<ts>-<uuid>/` on a new branch named `agent/<slug>-<short-id>`. The slug is derived from your spec via Claude.
-2. **Agent steps.** For `bug-fix`: a fix step → a refactor pass on touched files. Each step prints its system + user prompt header (or streams Claude tokens with `--thinking` / `--verbose`).
-3. **Deterministic gate.** `bun run lint:fix`, `bun run lint`, `bun run typecheck`, `bun run scenario`, `bun test --pass-with-no-tests`. If anything fails, the `deterministic-fixer` subagent gets up to 3 iterations to recover.
-4. **Summary writer.** A short Claude call that converts the staged diff into a commit message + a markdown changelog entry. The entry is prepended to `CHANGELOG.md` in the worktree and committed there.
-5. **Integration.** Default is `merge`: rebase the worktree onto your branch, then fast-forward your branch to the rebased tip. Worktree and branch are removed on success.
-6. **PASS line.** Total duration, token in/out, dollar cost (or `—` for Codex), the commit message, and the run's log directory.
-
-Run artifacts land under `.munchkins/runs/<slug>-<short-id>/` — see [Build your own](/agents/custom) for the full layout. If a run fails, the worktree and branch are preserved at the printed path; clean up with `git worktree remove <path>`, which deletes both.
-
-## Scaffold your first agent for this repo
-
-The default agents are demos. They don't know your repo's conventions, your file layout, or what "done" looks like for the kind of work you actually do here. The value kicks in when you build agents that match — same gate, same shared presets, same terse voice.
+## Scaffold your first agent
 
 Open Claude Code in this repo's root and trigger the skill:
 
 ```
-/new-munchkin
+/munchkins:new-munchkin
 ```
 
-The trigger phrases *"new munchkin"*, *"scaffold a munchkin agent"*, and *"design an agent for this repo"* all reach the same skill. It introspects your repo first (agents directory, existing agents, CI gate commands, lint/typecheck configs, package manager) so nothing it generates is hardcoded — then walks you through a short sequential interview: purpose, distinctness from existing agents, archetype, kebab-case name, and the prompt body.
+The trigger phrases *"new munchkin"*, *"scaffold a munchkin agent"*, *"design an agent for this repo"* all reach the same skill. It first introspects your repo (agents directory, existing agents, CI gate commands, lint configs, package manager) so nothing it generates is hardcoded, then walks you through a short design interview via [grill-me](https://github.com/anthropics/claude-skills/tree/main/skills/grill-me): purpose, distinctness from existing agents, archetype, kebab-case name, and optional flags (custom CLI options, PR integration, cron schedule).
 
-Create-mode produces:
+Create-mode produces three artifacts:
 
-- `<your-agent>-agent.ts` — fully wired against `AgentBuilder`, your discovered shared presets, the deterministic gate, and the summary writer.
-- `prompts/<your-agent>.md` — the system prompt, drafted in the same terse voice as your existing agent prompts.
-- A side-effect import in your bundle's entry (`packages/<your-bundle>/src/index.ts`) plus an `AGENTS.md` row.
+- **`<bundleDir>/agents/<name>/<name>-agent.ts`** — fully wired against `AgentBuilder`, the framework templates, the deterministic gate, and the summary writer.
+- **`<skillsDir>/<namespace>-<name>/SKILL.md`** — the agent's user-facing workflow, with a **functional default body** drawn from the chosen archetype's template. The agent is runnable immediately; refine the prompt later via edit mode (`/munchkins:new-munchkin` → edit).
+- **`<bundleDir>/agents/<name>/spec-template.md`** — the template that `/munchkins:launch-munchkin` uses when generating specs for this agent.
 
-The new agent appears in `bun run munchkins --help` and runs identically to `bug-fix`, `feat-small`, or `refactor`.
+Auto-discovery picks up the new agent at boot — **no bundle-entry edits required**. The agent appears in `bun run munchkins --help` and is invokable as `/<namespace>:<name>` in Claude Code.
+
+## Run your agent
+
+From the terminal:
+
+```sh
+bun run munchkins <your-agent> --user-message=path/to/brief.md
+```
+
+Or in Claude Code, let the meta-skill dispatch:
+
+```
+/munchkins:launch-munchkin
+```
+
+What happens, roughly in order:
+
+1. **Worktree spawn.** A fresh checkout under `.worktrees/<agent>-<ts>-<uuid>/` on a new branch named `agent/<slug>-<short-id>`.
+2. **Agent steps.** The archetype-defined chain — for example, single-step archetypes run one custom step; main+refactor runs a fix step then a refactor pass on touched files.
+3. **Deterministic gate.** `bun run lint:fix && bun run lint && bun run typecheck && bun run scenario && bun test`. If anything fails, the `deterministic-fixer` subagent gets up to 3 iterations to recover.
+4. **Summary writer.** A short Claude call that converts the staged diff into a commit message + a markdown changelog entry. The entry is prepended to `CHANGELOG.md` in the worktree and committed.
+5. **Integration.** Defaults to whatever `.munchkins/config.json` `integrate` says (`pr` for fresh consumer setups; override per-run with `--integrate=merge`). `merge` rebases + fast-forwards onto your branch; `pr` pushes + opens a PR via `gh`/`glab`.
+6. **PASS line.** Total duration, token in/out, dollar cost (or `—` for Codex), the commit message, and the run's log directory.
+
+Run artifacts land under `.munchkins/runs/<slug>-<short-id>/` — see [Build your own](/agents/custom) for the full layout. If a run fails, the worktree and branch are preserved at the printed path; clean up with `git worktree remove <path>`, which deletes both.
 
 ## Next steps
 
-- **Run the agents** — flag, env var, and integration details for each default: [Bug fix](/agents/bug-fix), [Small feature](/agents/feat-small), [Refactor](/agents/refactor).
-- **Go deeper** — full `AgentBuilder` API and the manual path to building your own: [Build your own](/agents/custom).
+- **Patterns to copy** — the dogfood agents under [`packages/serrano-munchkins/agents/`](https://github.com/serranoio/munchkins/tree/main/packages/serrano-munchkins/agents) show the three main archetypes in production form: [Bug fix](/agents/bug-fix), [Small feature](/agents/feat-small), [Refactor](/agents/refactor), plus a cron-driven [Director](/agents/director). Read them as references; copy any as a starting point.
+- **`AgentBuilder` API** and the manual path to building agents: [Build your own](/agents/custom).
