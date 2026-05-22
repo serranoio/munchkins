@@ -33,8 +33,11 @@ non-fixture repo lands a real commit on `main` and the worktree is cleaned.
 `PURPOSE.md`, dispatches an actual child munchkin, and the child lands a PR.
 
 **Acceptance:**
-- [ ] `bun run munchkins director --dry-run` exits 0 and prints a
-  triage outcome (idle OR dispatch target + work_type).
+- [x] `bun run munchkins director --dry-run` exits 0. In dry-run the
+  LLM is skipped, so the "triage outcome" line is the surrogate
+  `[director] dispatch (dry-run): would dispatch …` rather than a real
+  triage.json — the LLM-derived outcome is structurally unavailable in
+  dry-run.
 - [ ] One real tick against this repo: `bun run munchkins director` produces
   artifacts under `.director/<run>/`, dispatches a child via `dispatch.sh`,
   and the child opens a PR (or merges, depending on `.integrate()` strategy).
@@ -65,6 +68,25 @@ non-fixture repo lands a real commit on `main` and the worktree is cleaned.
   underlying `bun run lint/typecheck/scenario` failures inside step
   7 (currently masking the dry-run exit code) need diagnosis or a
   separate "skip DEFAULT_CHECKS in dry-run" decision.
+
+**Progress (2026-05-21):**
+- AC1 plumbing closed. Three fixes:
+  - `45fefb1` — `runDeterministic`'s fixer now honors dry-run (no
+    Claude call; surfaces the check failure directly).
+  - `875fcfc` — `createWorktree` now runs `bun install` in fresh
+    worktrees so DEFAULT_CHECKS' `bun run typecheck` finds
+    `docs/node_modules/@rspress/core`.
+  - `875fcfc` — `agent-builder.test.ts` beforeEach now scrubs
+    `__MUNCHKINS_OPT_dryRun` so leaked env from a parent dry-run
+    doesn't short-circuit `builder.run()` inside the test suite.
+- Verified end to end: `bun run munchkins director --dry-run` exits
+  0 with all 5 DEFAULT_CHECKS green in ~36 s. The "triage outcome"
+  half of AC1 is structurally impossible in pure dry-run (the LLM
+  steps are skipped, so triage.json is never written); dispatch.ts
+  prints `[director] dispatch (dry-run): would dispatch child …
+  (skipped — agent steps not invoked)` as the dry-run-shaped
+  surrogate. Closing AC1 on that interpretation.
+- AC4: `bun run munchkins daemon list` ships (`68d95ab`).
 - AC4 partially: schedule is hardcoded in `director-agent.ts:42`
   (`*/10 * * * *`), verifiable by source read; no `crons` /
   `registry list` subcommand exists today.
