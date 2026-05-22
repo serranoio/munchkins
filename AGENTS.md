@@ -25,6 +25,7 @@ The plan-funnel artifacts that produced this scaffold live under `docs/pages/int
 3. **The munchkins package does not depend on the harness.** The harness imports `@serranolabs.io/serrano-munchkins` and installs Claude mocks at the `spawnClaude` seam. No `scenario_id`, `run_id`, or harness-only identifier may flow into the production CLI surface.
 4. **Public docs builds (`PUBLIC_DOCS=true`) must filter `docs/pages/internal/**` out of the build output.** The env-gated `route.exclude` in `rspress.config.ts` is the single mechanism. Do not bypass it.
 5. **Never invoke real `claude` from inside the scenario harness.** The `spawnClaude` mock + `Bun.spawn` audit guard enforce this. A real-claude invocation fails the scenario regardless of pipeline outcome.
+6. **Scenarios never assert agent judgment.** A scenario validates deterministic plumbing — what code does given fixed input — not whether the LLM made a "good" call. Assertions that would require an eval harness (judging triage choices, summary-writer phrasing, fixer resolutions) belong in a separate evaluator artifact, not in `scenarios/`. If you find yourself wanting to assert "the LLM should have picked X," stop: that's an eval, and evals do not live in the scenario harness.
 
 ## Workflow conventions
 

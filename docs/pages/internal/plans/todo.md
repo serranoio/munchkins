@@ -38,9 +38,14 @@ non-fixture repo lands a real commit on `main` and the worktree is cleaned.
 - [ ] One real tick against this repo: `bun run munchkins director` produces
   artifacts under `.director/<run>/`, dispatches a child via `dispatch.sh`,
   and the child opens a PR (or merges, depending on `.integrate()` strategy).
-- [ ] Inflight survey detects the dispatched child's branch on a subsequent
+- [x] Inflight survey detects the dispatched child's branch on a subsequent
   tick — the director should NOT re-dispatch the same slice while it's in
-  flight.
+  flight. Deterministic part (enumerating `director/*` branches and
+  worktrees into `inflight.json`) covered by
+  `packages/serrano-munchkins/agents/director/scripts/inflight-survey.test.ts`.
+  The "should NOT re-dispatch" half is LLM judgment via the triage prompt
+  reading `inflight.json` — not asserted in scenarios per the no-evals
+  rule (AGENTS.md hard rule 6).
 - [x] `bun run munchkins daemon list` shows director with schedule
   `*/10 * * * *`. (Nested under `daemon` rather than a top-level `crons`
   command — operator runs it before `daemon` to confirm what will fire.)
