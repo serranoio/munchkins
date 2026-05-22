@@ -252,6 +252,24 @@ describe("resolveBranchPrefix", () => {
   });
 });
 
+describe("AgentBuilder.kind", () => {
+  test("fresh builder defaults to kind='launchable'", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.getKind()).toBe("launchable");
+  });
+
+  test("kind('cron-only') flips the value and returns the builder for chaining", () => {
+    const builder = new AgentBuilder("a");
+    expect(builder.kind("cron-only")).toBe(builder);
+    expect(builder.getKind()).toBe("cron-only");
+  });
+
+  test("kind('launchable') restores the default", () => {
+    const builder = new AgentBuilder("a").kind("cron-only").kind("launchable");
+    expect(builder.getKind()).toBe("launchable");
+  });
+});
+
 describe("AgentBuilder.handlesDryRun opt-out", () => {
   test("fresh builder defaults to handlesDryRun=false", () => {
     const builder = new AgentBuilder("a");

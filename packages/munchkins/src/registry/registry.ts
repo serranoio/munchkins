@@ -50,6 +50,15 @@ export class AgentRegistry {
     return [...this.agents.keys()];
   }
 
+  /** Names of agents whose `kind()` is `"launchable"` (the default). */
+  listLaunchable(): string[] {
+    const out: string[] = [];
+    for (const [name, builder] of this.agents) {
+      if (builder.getKind() === "launchable") out.push(name);
+    }
+    return out;
+  }
+
   get(name: string): AgentBuilder | undefined {
     return this.agents.get(name);
   }

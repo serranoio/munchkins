@@ -1,0 +1,6 @@
+// Appended to one of the agent.ts archetype templates above when N5c (cron)
+// fires. Chain after the last builder method, before `registry.register(...)`.
+  .cron("{{cronSpec}}", {
+    userMessage: "{{cronUserMessage}}",
+    verbosity: "{{cronVerbosity}}",
+  })

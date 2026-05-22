@@ -18,7 +18,8 @@
   },
   "files": [
     "src",
-    "skills"
+    "skills",
+    "templates"
   ],
   "exports": {
     ".": "./src/index.ts"

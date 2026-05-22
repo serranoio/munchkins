@@ -28,6 +28,8 @@ export interface OptionSchema {
 
 export type Verbosity = "default" | "thinking" | "verbose";
 
+export type AgentKind = "launchable" | "cron-only";
+
 export interface CronConfig {
   spec: string;
   userMessage: string;
@@ -63,6 +65,7 @@ export class AgentBuilder {
   private cronConfig?: CronConfig;
   private integration?: IntegrationStrategy;
   private _handlesDryRun = false;
+  private _kind: AgentKind = "launchable";
 
   constructor(name: string, description?: string, sandbox?: SandboxFactory) {
     this.name = name;
@@ -224,6 +227,22 @@ export class AgentBuilder {
 
   getHandlesDryRun(): boolean {
     return this._handlesDryRun;
+  }
+
+  /**
+   * Mark this agent as `launchable` (the default — appears in `list-launchable`
+   * and is a valid target for the launch-munchkin skill) or `cron-only` (omitted
+   * from `list-launchable` because it is driven by the daemon's timer, not by
+   * an operator request). `--help` still shows all kinds; this only affects
+   * the launchable-agent enumeration used by the launch-munchkin skill.
+   */
+  kind(k: AgentKind): this {
+    this._kind = k;
+    return this;
+  }
+
+  getKind(): AgentKind {
+    return this._kind;
   }
 
   async run(): Promise<RunResult> {

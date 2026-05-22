@@ -4,6 +4,117 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(munchkins): meta-skills overhaul — config, discovery, templates, kind, cmux verbosity (4a9d737)
+**2026-05-21 17:27 PDT · feat-small · 1395.0s · $17.3850**
+
+**Goal:** Implement the framework + repo changes that back the rewritten `munchkins:init`, `munchkins:new-munchkin`, and `munchkins:launch-munchkin` skills — config reader, auto-discovery, templates, kind flag, cmux verbosity auto-injection, and per-agent spec templates.
+
+**Outcome:** Added `MunchkinsConfig` read/write at `.munchkins/config.json`, a `discoverAgents()` glob helper that replaces hand-maintained side-effect imports, a `templates/` directory with archetype scaffolds + spec templates + a `fillTemplate()` slot helper, an `AgentBuilder.kind()` flag (`launchable` | `cron-only`) plus a `list-launchable` CLI command, cmux `--verbose` auto-injection for agent subcommands, spec-template.md files for the three launchable shipped agents, and converted `serrano-munchkins/agentRegistry.ts` to use `discoverAgents`. The director agent is now marked `cron-only`.
+
+**How to test manually:**
+
+1. From the repo root, verify config round-trips:
+   ```
+   bun test packages/munchkins/src/config/config.test.ts
+   ```
+   Expect all 5 tests green.
+
+2. Verify auto-discovery globs and dynamic-imports `*-agent.ts` files in sorted order, and that the existing four agents still register through it:
+   ```
+   bun test packages/munchkins/src/registry/discover.test.ts
+   bun run munchkins --help
+   ```
+   The help output should list `bugfix`, `director`, `feat-small`, `refactor` — same as before the refactor.
+
+3. Verify the new `list-launchable` command omits cron-only agents:
+   ```
+   bun run munchkins list-launchable
+   bun run munchkins list-launchable --json
+   ```
+   First should print `bugfix`, `feat-small`, `refactor` one per line (NOT `director`). JSON should be `["bugfix","feat-small","refactor"]` (order may vary by registration).
+
+4. Verify cmux verbosity auto-injection by inspecting the built command:
+   ```
+   bun test packages/munchkins/src/cmux-launcher.test.ts
+   ```
+   All variants (auto-inject when absent, skip when `--verbose`/`--thinking`/`--dry-run` present, skip for `daemon`/`skills`/`list-launchable`) should pass.
+
+5. Verify templates exist and slot substitution works:
+   ```
+   bun test packages/munchkins/src/templates/templates.test.ts
+   ```
+   Then sanity-check a template by hand:
+   ```
+   bun -e 'import { fillTemplate, specTemplatePath } from "@serranolabs.io/munchkins"; console.log(fillTemplate(specTemplatePath("bug"), { oneLineGoal: "X", problemStatement: "Y" }))'
+   ```
+   Output should contain `# Bug: X` and `Y`, with unfilled slots like `{{currentBehavior}}` left intact.
+
+6. Verify `.munchkins/config.json` is loadable from the repo root:
+   ```
+   bun -e 'import { readConfig } from "@serranolabs.io/munchkins"; console.log(readConfig())'
+   ```
+   Expect the source-repo config object to print.
+
+7. Verify `kind()` flag on the director:
+   ```
+   bun -e 'import "./packages/serrano-munchkins/agents/director/director-agent.js"; import { registry } from "@serranolabs.io/munchkins"; console.log(registry.get("director")?.getKind())'
+   ```
+   Expect `cron-only`.
+
+8. Out-of-band check the auto-discovery converted bundle still wires the CLI end-to-end:
+   ```
+   bun run munchkins refactor --help
+   ```
+   Should print the refactor agent's help with all options — proves `discoverAgents` actually imported it and `registry.register` fired as a side effect.
+
+**Files changed:**
+
+- .gitignore
+- .munchkins/config.json
+- AGENTS.md
+- docs/pages/internal/plans/meta-skills-overhaul.md
+- docs/pages/internal/plans/todo.md
+- packages/munchkins/package.json
+- packages/munchkins/skills/munchkins-init/SKILL.md
+- packages/munchkins/skills/munchkins-launch-munchkin/SKILL.md
+- packages/munchkins/skills/munchkins-new-munchkin/SKILL.md
+- packages/munchkins/src/builder/agent-builder.ts
+- packages/munchkins/src/builder/agent-builder.test.ts
+- packages/munchkins/src/builder/index.ts
+- packages/munchkins/src/cmux-launcher.ts
+- packages/munchkins/src/cmux-launcher.test.ts
+- packages/munchkins/src/config/config.ts
+- packages/munchkins/src/config/config.test.ts
+- packages/munchkins/src/config/index.ts
+- packages/munchkins/src/index.ts
+- packages/munchkins/src/registry/discover.ts
+- packages/munchkins/src/registry/discover.test.ts
+- packages/munchkins/src/registry/index.ts
+- packages/munchkins/src/registry/list-launchable-command.ts
+- packages/munchkins/src/registry/list-launchable-command.test.ts
+- packages/munchkins/src/registry/registry.ts
+- packages/munchkins/src/registry/registry.test.ts
+- packages/munchkins/src/templates/templates.ts
+- packages/munchkins/src/templates/templates.test.ts
+- packages/munchkins/src/templates/index.ts
+- packages/munchkins/templates/agent.ts.single-step
+- packages/munchkins/templates/agent.ts.main-refactor
+- packages/munchkins/templates/agent.ts.main-refactor-tests
+- packages/munchkins/templates/agent.ts.cron-overlay
+- packages/munchkins/templates/skill-body.single-step.md
+- packages/munchkins/templates/skill-body.main-refactor.md
+- packages/munchkins/templates/skill-body.main-refactor-tests.md
+- packages/munchkins/templates/spec-template.refactor.md
+- packages/munchkins/templates/spec-template.bug.md
+- packages/munchkins/templates/spec-template.feature.md
+- packages/serrano-munchkins/agentRegistry.ts
+- packages/serrano-munchkins/agents/director/director-agent.ts
+- packages/serrano-munchkins/agents/director/scripts/inflight-survey.test.ts
+- packages/serrano-munchkins/agents/bugfix/spec-template.md
+- packages/serrano-munchkins/agents/feat-small/spec-template.md
+- packages/serrano-munchkins/agents/refactor/spec-template.md
+
+---
 ## feat(packages): split framework from dogfood agents into serrano-munchkins (85e1405)
 **2026-05-20 20:38 PDT · feat-small · 512.9s · $4.4392**
 

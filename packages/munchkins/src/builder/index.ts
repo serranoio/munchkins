@@ -1,5 +1,6 @@
 export {
   AgentBuilder,
+  type AgentKind,
   type BranchPrefixResult,
   type CronConfig,
   type OptionSchema,

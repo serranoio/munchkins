@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 export {
   AgentBuilder,
+  type AgentKind,
   type BranchPrefixResult,
   type CronConfig,
   deriveSlugDeterministic,
@@ -23,6 +24,16 @@ export {
   type Verbosity,
 } from "./builder/index.js";
 export {
+  CONFIG_REL_PATH,
+  configDir,
+  configPath,
+  type MunchkinsConfig,
+  type MunchkinsIntegrate,
+  type MunchkinsMode,
+  readConfig,
+  writeConfig,
+} from "./config/index.js";
+export {
   detectProvider,
   type IntegrateOptions,
   type IntegratePROptions,
@@ -37,7 +48,12 @@ export {
   type RebaseAndResolveResult,
   rebaseAndResolve,
 } from "./integrate.js";
-export { AgentRegistry, registry } from "./registry/index.js";
+export {
+  AgentRegistry,
+  discoverAgents,
+  registerListLaunchableCommand,
+  registry,
+} from "./registry/index.js";
 export {
   listResumableRuns,
   loadState,
@@ -70,6 +86,17 @@ export {
 } from "./scheduler/index.js";
 export { type RunStatusDeps, type RunStatusResult, runStatus } from "./status/index.js";
 export {
+  type AgentArchetype,
+  agentTemplatePath,
+  cronOverlayPath,
+  fillTemplate,
+  type SpecKind,
+  skillBodyTemplatePath,
+  specKindForArchetype,
+  specTemplatePath,
+  templatesDir,
+} from "./templates/index.js";
+export {
   cleanupWorktree,
   createWorktree,
   deleteBranch,
@@ -80,7 +107,7 @@ export {
 } from "./worktree.js";
 
 import { buildCmuxCommand, shouldDelegateToCmux } from "./cmux-launcher.js";
-import { registry } from "./registry/index.js";
+import { registerListLaunchableCommand, registry } from "./registry/index.js";
 import { registerResumeCommand } from "./resume/command.js";
 import { registerDaemonCommand } from "./scheduler/command.js";
 import { registerStatusCommand } from "./status/command.js";
@@ -88,6 +115,7 @@ import { registerStatusCommand } from "./status/command.js";
 registerResumeCommand(registry);
 registerStatusCommand(registry);
 registerDaemonCommand(registry);
+registerListLaunchableCommand(registry);
 
 export interface RunCliOptions {
   argv: readonly string[];
