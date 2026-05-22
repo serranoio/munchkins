@@ -15,32 +15,30 @@ export function templatesDir(): string {
   return TEMPLATES_DIR;
 }
 
+function _requireTemplate(filename: string, label: string): string {
+  const path = resolve(TEMPLATES_DIR, filename);
+  if (!existsSync(path)) throw new Error(`${label} template missing: ${path}`);
+  return path;
+}
+
 /** Absolute path to a specific archetype's `agent.ts.<archetype>` template. */
 export function agentTemplatePath(archetype: AgentArchetype): string {
-  const path = resolve(TEMPLATES_DIR, `agent.ts.${archetype}`);
-  if (!existsSync(path)) throw new Error(`agent template missing: ${path}`);
-  return path;
+  return _requireTemplate(`agent.ts.${archetype}`, "agent");
 }
 
 /** Absolute path to a specific archetype's `skill-body.<archetype>.md` template. */
 export function skillBodyTemplatePath(archetype: AgentArchetype): string {
-  const path = resolve(TEMPLATES_DIR, `skill-body.${archetype}.md`);
-  if (!existsSync(path)) throw new Error(`skill body template missing: ${path}`);
-  return path;
+  return _requireTemplate(`skill-body.${archetype}.md`, "skill body");
 }
 
 /** Absolute path to a specific spec kind's `spec-template.<kind>.md`. */
 export function specTemplatePath(kind: SpecKind): string {
-  const path = resolve(TEMPLATES_DIR, `spec-template.${kind}.md`);
-  if (!existsSync(path)) throw new Error(`spec template missing: ${path}`);
-  return path;
+  return _requireTemplate(`spec-template.${kind}.md`, "spec");
 }
 
 /** Absolute path to the cron-overlay template (chained onto an agent template). */
 export function cronOverlayPath(): string {
-  const path = resolve(TEMPLATES_DIR, "agent.ts.cron-overlay");
-  if (!existsSync(path)) throw new Error(`cron overlay template missing: ${path}`);
-  return path;
+  return _requireTemplate("agent.ts.cron-overlay", "cron overlay");
 }
 
 /**

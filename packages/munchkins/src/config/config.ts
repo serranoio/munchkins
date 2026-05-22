@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 export type MunchkinsMode = "source-repo" | "consumer-repo";
 export type MunchkinsIntegrate = "merge" | "pr";
@@ -23,8 +23,7 @@ export const CONFIG_REL_PATH = ".munchkins/config.json";
  * fatal or surface a setup hint.
  */
 export function readConfig(repoRoot?: string): MunchkinsConfig | null {
-  const root = repoRoot ?? process.cwd();
-  const path = resolve(root, CONFIG_REL_PATH);
+  const path = configPath(repoRoot);
   if (!existsSync(path)) return null;
   const raw = readFileSync(path, "utf-8");
   let parsed: unknown;
@@ -43,8 +42,7 @@ export function readConfig(repoRoot?: string): MunchkinsConfig | null {
  * pre-existing config they want to preserve.
  */
 export function writeConfig(config: MunchkinsConfig, repoRoot?: string): void {
-  const root = repoRoot ?? process.cwd();
-  const path = resolve(root, CONFIG_REL_PATH);
+  const path = configPath(repoRoot);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 }
@@ -86,5 +84,5 @@ export function configPath(repoRoot?: string): string {
 
 /** Absolute path to the parent `.munchkins/` directory. */
 export function configDir(repoRoot?: string): string {
-  return join(repoRoot ?? process.cwd(), ".munchkins");
+  return dirname(configPath(repoRoot));
 }
