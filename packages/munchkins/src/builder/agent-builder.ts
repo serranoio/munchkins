@@ -831,6 +831,14 @@ export class AgentBuilder {
       logger.deterministicQuietSummary(stepIndex, this.steps.length, i, max, entries);
 
       if (allPassed) return;
+      // Dry-run: the fixer is a Claude call. Honor the same skip-claude contract
+      // as runAgent (line 728). Surface the failure output directly instead of
+      // trying to fix it.
+      if (isDryRunRequested()) {
+        throw new Error(
+          `deterministic step failed in dry-run; fixer skipped:\n${lastOutput.slice(-2000)}`,
+        );
+      }
       if (step.loop && i < max) {
         const fixer = step.loop.fixer.withUserMessage(
           `Commands failed (iteration ${i}/${max}):\n\n${lastOutput.slice(-4000)}`,
