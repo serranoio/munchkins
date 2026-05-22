@@ -1,6 +1,6 @@
 ---
 name: munchkins:launch-munchkin
-description: Use this skill when the user wants to delegate a coding task to a munchkins background agent in this repo — signaled by words like "munchkin", "spawn an agent", "send this to a refactor agent", "launch a bug-fix agent", "kick off feat-small", or by naming a munchkin subcommand directly (bug-fix, feat-small, refactor). Do NOT use this skill when the user wants Claude to do the work inline; only when they want to hand off to a separate background agent run.
+description: Use this skill when the user wants to delegate a coding task to a munchkins background agent — signaled by words like "munchkin", "spawn an agent", "delegate to an agent", "kick off feat-small", "launch a bug-fix agent", or by naming a registered munchkin subcommand directly. Do NOT use this skill when the user wants Claude to do the work inline; only when they want to hand off to a separate background agent run.
 ---
 
 # Launch Munchkin
@@ -9,126 +9,145 @@ Hands a coding task off to a `munchkins` background agent and exits. Fire-and-fo
 
 ## When this skill applies
 
-Trigger on explicit delegation vocabulary: "munchkin", "spawn agent", "delegate to agent", "send this to a [bug-fix|feat-small|refactor] agent", "launch [subcommand]", or the user naming a munchkin subcommand directly.
+Trigger on explicit delegation vocabulary: "munchkin", "spawn agent", "delegate to agent", "send this to an agent", "launch [subcommand]", or the user naming a registered munchkin subcommand directly.
 
 If the request is ambiguous between "do it inline" and "delegate to a munchkin," default to inline. Only fire this skill when the user has signaled delegation.
-
-## Subcommands
-
-- `bug-fix` — fix a described bug
-- `feat-small` — implement a small new feature
-- `refactor` — refactor a target for DRY/clarity
 
 ## Workflow
 
 ### 1. Pre-flight
 
-Verify cwd is the munchkins repo:
+Verify `munchkins` is available:
 
 ```bash
-test -f packages/munchkins/src/index.ts
+bun run munchkins --version
 ```
 
-If it fails, tell the user "launch-munchkin only runs inside the munchkins repo" and stop.
+If it fails, tell the user "launch-munchkin requires `@serranolabs.io/munchkins` to be installed in this repo" and stop.
 
 ### 2. Pick the subcommand
 
-Infer from the request:
-- "bug", "fix", "broken", "regression" → `bug-fix`
-- "feature", "add", "implement", "new" → `feat-small`
-- "refactor", "dedupe", "DRY", "extract", "clean up" → `refactor`
-
-If multiple subcommands could apply (e.g., "fix the duplicated logic in X" — `bug-fix` or `refactor`?), ask the user before proceeding. Do not guess.
-
-### 3. Resolve the user-message file
-
-**If the request includes a path to an existing `.md` file** (e.g., "launch refactor with `docs/pages/internal/plans/refactor-runlogger.md`"): use that path as-is.
-
-**Otherwise**, generate a spec at `docs/pages/internal/plans/<subcommand>-<short-slug>.md` from the conversation context. The spec must:
-- State the goal in one paragraph at the top
-- Identify target files using `path:line` references
-- List acceptance criteria (concrete, checkable)
-- Include an explicit **Out of scope** section listing what NOT to touch
-
-Use existing plans in `docs/pages/internal/plans/` as shape references — short headings, ASCII tables for behavior matrices, code blocks for type signatures.
-
-Show the user the spec contents and the exact command before invoking. Confirm once.
-
-### 4. Spawn (default mode)
-
-Always pass `--verbose`. The user runs munchkins inside `cmux`, which detaches the agent from the foreground `bun run` (the task-notification's "completed" fires the moment cmux acks the handoff, not when the agent finishes — that's expected and intentional). Without `--verbose`, the cmux session is silent and the user can't tell from inside cmux whether the agent is working, stuck, or already done. `--verbose` makes the cmux session show full agent output so the user can monitor and intervene.
-
-Run in background and exit:
+Read the live agent list:
 
 ```bash
-bun run munchkins <subcommand> --user-message <path> --verbose
+bun run munchkins --help
 ```
 
-Invoke via `Bash(run_in_background: true)`. Then **stop**.
+Match the user's request against the agent descriptions in the help output. Use the description text to judge fit.
+
+- **Single clear candidate** → use it.
+- **Multiple candidates** (e.g., "fix the duplicated logic in X" — could be a bug fix or a refactor) → ask the user which one, listing the candidates.
+- **Zero candidates** (nothing in the user's message hints at which agent) → ask the user which agent to use, listing all registered agents from `--help`.
+
+Never guess.
+
+### 3. Resolve the spec file
+
+**If the request includes a path to an `.md` file that exists and is non-empty** (e.g., "launch refactor with `docs/plans/refactor-runlogger.md`"): use that path as-is.
+
+**If the request mentions a path that is missing, empty, or not `.md`**: ask the user to clarify (typo, or generate a new spec instead?) before continuing.
+
+**Otherwise**, generate a new spec at:
+
+```
+.munchkins/specs/<subcommand>-<short-slug>-<MMDDYYYY-HHMM>.md
+```
+
+Always timestamp — never overwrite an existing spec.
+
+Load the per-agent template from the first path that exists:
+
+1. `packages/munchkins/agents/<subcommand>/spec-template.md` (when running inside this monorepo)
+2. `node_modules/@serranolabs.io/munchkins/agents/<subcommand>/spec-template.md` (consumer repos)
+3. `.munchkins/agents/<subcommand>/spec-template.md` (project-local agents)
+
+Fill the template from conversation context. If no template exists for the chosen agent, generate the spec free-form with goal, target files (`file:line`), acceptance criteria, and an explicit **Out of scope** section.
+
+### 4. Soft-check active worktrees
+
+List worktrees matching the chosen subcommand:
+
+```bash
+ls -1d .worktrees/<subcommand>-* 2>/dev/null
+```
+
+If any exist, surface them in the confirmation step below — they're either still running or failed and preserved. The user decides whether to proceed.
+
+### 5. Resolve flags
+
+Read `.munchkins/config.json` if present. Apply config defaults:
+
+- `integrate`: skill default is `pr`. A config value (`"merge"` or `"pr"`) overrides the skill default for this repo.
+- Explicit user flags always win over config.
+
+Build the resolved command. Example shape:
+
+```bash
+bun run munchkins <subcommand> --user-message <path> --integrate=pr
+```
+
+### 6. Confirm
+
+Show the user:
+
+- The spec contents (path + body).
+- The resolved command.
+- Any active or stale worktrees from step 4.
+
+**Always wait for explicit confirmation before proceeding** — even under auto mode. Spawning an autonomous coding agent that creates commits and PRs is the class of action that requires a human in the loop.
+
+### 7. Validate via `--dry-run`
+
+Run the resolved command foreground with `--dry-run` appended:
+
+```bash
+bun run munchkins <subcommand> --user-message <path> --integrate=<mode> --dry-run
+```
+
+If it exits non-zero, surface the error and stop. Do not proceed to the real launch.
+
+### 8. Spawn
+
+Run the same command (without `--dry-run`) in the background and exit. Invoke via `Bash(run_in_background: true)`. Then **stop**.
 
 - Do NOT tail the output file.
 - Do NOT call `ScheduleWakeup`.
 - Do NOT pgrep, ps, or otherwise check on the process.
 - Do NOT report PASS/FAIL when it eventually finishes.
 
-The agent integrates its own commits onto the parent branch when it finishes; the user will see them in `git log` on their own pace.
+The agent integrates its own commits when it finishes; the user will see them in `git log` on their own pace.
 
-Reply to the user with one line:
+Reply to the user with two lines:
 
 ```
 launched: <subcommand> agent on <path>
+check `bun run munchkins status` or `.worktrees/` later if you don't see commits within ~1h.
 ```
 
 …and stop.
 
-### 5. Spec-only mode (when explicitly asked)
+## User-passed `--dry-run`
 
-If the user explicitly says "just write the spec", "give me the command, don't run it", or similar: write the markdown file, print the exact command, and stop. Do NOT invoke the CLI.
+If the user explicitly passed `--dry-run` in their request: run the command foreground, show the output, stop. Do not run a second invocation. The fire-and-forget rule in step 8 applies only to non-dry-run launches.
+
+## Spec-only mode
+
+If the user explicitly says "just write the spec", "give me the command, don't run it", or similar: write the spec file, print the resolved command, and stop. Skip steps 6–8.
 
 ## Flag handling
 
-`--verbose` is always set (see step 4). Pass these other flags through only when the user explicitly asks for them. Do not infer.
+Pass these flags through only when the user explicitly asks for them. Do not infer.
 
 - `--cli claude|codex` — backend selector
-- `--thinking` — middle verbosity (Claude streaming visible without boxed prompts)
-- `--dry-run` — print resolved pipeline without invoking; in this mode run **foreground** (it's fast, side-effect-free, and the output is the entire point)
+- `--thinking` — middle verbosity (Claude streaming without boxed prompts)
+- `--integrate <mode>` — `pr` (skill default) or `merge`. Read repo-level default from `.munchkins/config.json` if present.
 
 ## What this skill does NOT do
 
 - Does not poll, tail, or report on the running agent.
-- Does not check for concurrent worktrees or duplicate launches.
+- Does not hard-block on concurrent worktrees — only surfaces them in the confirmation.
 - Does not retry on failure.
-- Does not validate flag combinations — the CLI does that.
+- Does not validate flag combinations beyond the `--dry-run` pre-check (the CLI does the rest).
 - Does not bundle scripts — all operations are inline shell.
-
-## Spec template (for generated `docs/pages/internal/plans/*.md` files)
-
-```markdown
-# <Type>: <one-line goal>
-
-<one-paragraph problem statement>
-
-## Target file(s)
-
-`<path/to/file.ts>`
-
-## What to change
-
-- <concrete instruction with file:line references>
-- ...
-
-## Constraints
-
-1. <invariant that must hold>
-2. ...
-
-## Acceptance criteria
-
-- <observable, checkable outcome>
-- ...
-
-## Out of scope
-
-- <what NOT to touch>
-- ...
-```
+- Does not hardcode the agent list — agents are discovered at runtime via `bun run munchkins --help`.
+- Does not own spec templates — each agent ships its own `spec-template.md`.

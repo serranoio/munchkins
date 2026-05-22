@@ -74,6 +74,8 @@ describe("shouldDelegateToCmux", () => {
     ["daemon"],
     ["resume"],
     ["status"],
+    ["skills"],
+    ["list-launchable"],
   ])("returns false when argv[2] is meta-subcommand %s", (sub) => {
     expect(
       shouldDelegateToCmux({
@@ -122,7 +124,7 @@ describe("buildCmuxCommand", () => {
     expect(command[cwdIdx + 1]).toBe("/some/where");
   });
 
-  test("--command starts with MUNCHKINS_NO_CMUX=1, single-quotes every argv element, uses argv[1] absolute script path", () => {
+  test("--command starts with MUNCHKINS_NO_CMUX=1, single-quotes every argv element, uses argv[1] absolute script path, and auto-injects --verbose", () => {
     const { command } = buildCmuxCommand({
       argv: ["bun", "/abs/index.ts", "bug-fix", "--user-message=./bug.md"],
       cwd: "/repo",
@@ -132,8 +134,55 @@ describe("buildCmuxCommand", () => {
     const inner = getInnerCommand(command);
     expect(inner.startsWith("MUNCHKINS_NO_CMUX=1 ")).toBe(true);
     expect(inner).toBe(
-      "MUNCHKINS_NO_CMUX=1 'bun' 'run' '/abs/index.ts' 'bug-fix' '--user-message=./bug.md'",
+      "MUNCHKINS_NO_CMUX=1 'bun' 'run' '/abs/index.ts' 'bug-fix' '--user-message=./bug.md' '--verbose'",
     );
+  });
+
+  test("auto-injects --verbose when no verbosity flag is present", () => {
+    const { command } = buildCmuxCommand({
+      argv: ["bun", "/abs/index.ts", "feat-small", "--user-message=./brief.md"],
+      cwd: "/repo",
+      now: 1,
+      env: {},
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).toContain("'--verbose'");
+  });
+
+  test("does NOT auto-inject --verbose when --verbose is already present", () => {
+    const { command } = buildCmuxCommand({
+      argv: ["bun", "/abs/index.ts", "feat-small", "--verbose", "--user-message=./brief.md"],
+      cwd: "/repo",
+      now: 1,
+      env: {},
+    });
+    const inner = getInnerCommand(command);
+    // Single occurrence — no duplicate appended.
+    expect(inner.match(/'--verbose'/g)?.length).toBe(1);
+  });
+
+  test("does NOT auto-inject --verbose when --thinking is already present", () => {
+    const { command } = buildCmuxCommand({
+      argv: ["bun", "/abs/index.ts", "feat-small", "--thinking", "--user-message=./brief.md"],
+      cwd: "/repo",
+      now: 1,
+      env: {},
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).not.toContain("'--verbose'");
+    expect(inner).toContain("'--thinking'");
+  });
+
+  test("does NOT auto-inject --verbose when --dry-run is already present", () => {
+    const { command } = buildCmuxCommand({
+      argv: ["bun", "/abs/index.ts", "feat-small", "--dry-run"],
+      cwd: "/repo",
+      now: 1,
+      env: {},
+    });
+    const inner = getInnerCommand(command);
+    expect(inner).not.toContain("'--verbose'");
+    expect(inner).toContain("'--dry-run'");
   });
 
   test("strips --no-cmux from inner command", () => {

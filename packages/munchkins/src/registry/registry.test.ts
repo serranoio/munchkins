@@ -114,6 +114,15 @@ describe("AgentRegistry.cli()", () => {
     expect(observed).toBe("codex");
   });
 
+  test("listLaunchable() returns names of agents whose kind is 'launchable' (default)", () => {
+    const reg = new AgentRegistry();
+    reg.register(new AgentBuilder("alpha"));
+    reg.register(new AgentBuilder("beta").kind("cron-only"));
+    reg.register(new AgentBuilder("gamma"));
+    expect(reg.listLaunchable()).toEqual(["alpha", "gamma"]);
+    expect(reg.list()).toEqual(["alpha", "beta", "gamma"]);
+  });
+
   test("registerCommand() adds a top-level subcommand visible in cli().commands", () => {
     const reg = new AgentRegistry();
     reg.registerCommand({

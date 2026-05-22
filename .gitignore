@@ -2,7 +2,8 @@ node_modules/
 dist/
 doc_build/
 .turbo/
-.munchkins/
+.munchkins/*
+!.munchkins/config.json
 .scenario-artifacts/
 .worktrees/
 .director/

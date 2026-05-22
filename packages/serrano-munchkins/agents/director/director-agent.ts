@@ -59,6 +59,7 @@ const builder = new AgentBuilder(
   })
   .summaryWriter(defaultSummaryWriter())
   .handlesDryRun()
+  .kind("cron-only")
   .cron("*/10 * * * *", { userMessage: "tick", verbosity: "thinking" });
 
 registry.register(builder);

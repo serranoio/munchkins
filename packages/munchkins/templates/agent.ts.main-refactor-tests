@@ -1,0 +1,45 @@
+import { AgentBuilder, gitWorktreeSandbox, Prompt, registry } from "@serranolabs.io/munchkins";
+import {
+  BRANCH_PREFIX_OPTION,
+  DEFAULT_CHECKS,
+  defaultFixer,
+  defaultSummaryWriter,
+  GUIDELINES_PATH,
+  REFACTORER_PATH,
+  TEST_WRITER_PATH,
+} from "{{sharedPresetsImport}}";
+
+const builder = new AgentBuilder(
+  "{{slug}}",
+  "{{description}}",
+  gitWorktreeSandbox(),
+)
+  .option("branchPrefix", BRANCH_PREFIX_OPTION)
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSkill("{{namespace}}:{{slug}}")
+      .withUserMessageFromOption("userMessage", {
+        required: true,
+        description: "{{userMessageDescription}}",
+      }),
+  )
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSystem(REFACTORER_PATH)
+      .withUserMessage("Refactor only files touched by the previous step. Do not expand scope."),
+  )
+  .add(
+    new Prompt(GUIDELINES_PATH)
+      .withSystem(TEST_WRITER_PATH)
+      .withUserMessage(
+        "Analyze the diff and add minimal tests for any new public surface. Skip if there is nothing new to test.",
+      ),
+  )
+  .addDeterministic([...DEFAULT_CHECKS], {
+    loop: { maxIterations: 3, fixer: defaultFixer() },
+  })
+  .summaryWriter(defaultSummaryWriter());
+
+registry.register(builder);
+
+export { builder };
