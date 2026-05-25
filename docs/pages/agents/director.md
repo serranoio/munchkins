@@ -57,20 +57,25 @@ Every repo the director runs against MUST have a `PURPOSE.md` at the root. Minim
 ```markdown
 # Purpose
 
-## Who it's for
-<one paragraph: the user / audience>
+**<one-sentence headline: what this repo is trying to be>**
 
 ## Success looks like
-<bulleted list: 3–5 concrete outcomes that mean the project succeeded>
+<numbered or bulleted list: 3–5 concrete outcomes that mean the project succeeded>
 
 ## Out of scope
-<bulleted list: things that are explicitly NOT for this project>
+<bulleted list: hard NOs — things the director should never propose as a slice>
 
 ## Current bets
-<optional, dated bullets: what the operator is currently steering toward>
+<dated bullets: what the operator is currently steering toward; ideally include hints on which work-types fit each bet, e.g. "Slice candidates: feat-small, bug-fix">
 ```
 
 The director re-reads `PURPOSE.md` every tick. Editing the file is your steering mechanism between daemon restarts — no STOP sentinel, no flag file.
+
+**Optional but useful:**
+
+- A north-star callout right under `# Purpose` (e.g., `> This file is the director's north star. It is re-read every tick. Edit it to steer.`) as a self-reminder for future editors.
+- A structure / modes table near the top describing what shape the project takes. This repo's own [`PURPOSE.md`](https://github.com/serranoio/munchkins/blob/main/PURPOSE.md) uses one to define the three Autonomous Modes (Autopilot / Lights out / Foreman). Recommended when the project ships more than one shape of output; skip it when the project has one obvious shape.
+- A "who it's for" paragraph if the persona isn't already implied by the headline.
 
 ## Vertical-slice rule
 
