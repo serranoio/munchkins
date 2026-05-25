@@ -4,6 +4,26 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(scenarios): add feat-small Foreman PR-integrate E2E (e265009)
+**2026-05-24 20:31 PDT · feat-small · 391.9s · $1.7435**
+
+**Goal:** Close the feat-small Foreman half of PURPOSE.md Success #1 by adding a `--integrate=pr` end-to-end scenario for the registered `feat-small` agent.
+
+**Outcome:** Added `scenarios/feat-small-pr-integrate-e2e.ts`, patterned after `scenarios/bugfix-pr-integrate-e2e.ts` but pointed at the feat-small fixtures, skill, agent registration, and `feature.md` user message. The harness stands up a bare-repo `origin` plus a fake `gh` PATH shim, runs the agent end-to-end, and asserts: zero real `claude` spawns, exactly one `gh pr create --base main` with non-empty `--title`/`--body` containing `**Goal:**`, local `main` SHA unchanged, an `agent/*` branch pushed to the remote with a `docs(changelog):` tip subject, and clean worktree teardown. Wired the new scenario into the `scenario` script in `package.json` so it runs alongside the existing gates.
+
+**How to test manually:**
+
+1. From the repo root on a clean working tree, run `bun scenarios/feat-small-pr-integrate-e2e.ts` and confirm it exits 0 and prints a `pass` result. Re-run it immediately to confirm it still exits 0 with no leftover state.
+2. Run `bun scenarios/feat-small-pr-integrate-e2e.ts --preserve`, then inspect the preserved artifact directory printed to stderr (`.scenario-artifacts/feat-small-pr-integrate-e2e-<ts>/`). Open `gh.log` and verify there is exactly one JSON line whose `argv` starts with `["pr","create",...]` and whose `flags` include `base: "main"`, a non-empty `title`, and a `body` containing `**Goal:**`. Open `result.json` and confirm `result: "pass"`.
+3. Negative-path check: temporarily edit `packages/serrano-munchkins/agents/feat-small/feat-small-agent.ts` to break the integrate step (e.g. force the integrate strategy to `"merge"`), run `bun scenarios/feat-small-pr-integrate-e2e.ts`, and confirm it now exits 1 with a `phase: "assertion"` failure about `gh pr create` invocation count or local main advancing. Revert the edit and confirm the scenario passes again.
+4. Regression sweep: run `bun run scenario` and confirm the full chain — including `scenarios/index.ts`, `scenarios/bugfix-pr-integrate-e2e.ts`, and `scenarios/feat-small-agent-e2e.ts` — still passes. Then run `bun run lint` and `bun run typecheck` to confirm both gates are green.
+
+**Files changed:**
+
+- scenarios/feat-small-pr-integrate-e2e.ts
+- package.json
+
+---
 ## feat(scenarios): add feat-small Lights out end-to-end scenario (5b08529)
 **2026-05-24 20:17 PDT · feat-small · 689.4s · $5.0330**
 
