@@ -1,14 +1,20 @@
 # munchkins
 
-**Project-specific, OPINIONATED, deterministic skills.**
+**Bootstrap any repository into a software factory — at the autonomy level you choose.**
 
-Prompt → review.
-Prompt → production.
-Configurable your way.
+| Software factory type | Prompt arc | Autonomous Modes (↓ touches per slice = ↑ autonomy) | Ships to | When to use |
+|---|---|---|---|---|
+| **Autopilot** | `purpose → production` | **0 touches** — `PURPOSE.md` is the only input; runs unattended | Merged main | Fully autonomous software factory. You write the vision; the factory does the work, on its own cadence. |
+| **Lights out** | `prompt → production` | **1 touch** — operator writes the brief, walks away | Merged main | Local dev / solo / personal repo. You trust the gate. `--integrate=merge`. |
+| **Foreman** | `prompt → review` | **2 touches** — operator writes the brief AND signs off the PR | Merged main *after* human review | Product / team / branch-protected repo. Gate is necessary, not sufficient. `--integrate=pr`. |
 
-OPINIONATED because every agent's output is gated by your repo's standards before it lands — no exceptions. Configurable because *your* standards are whatever your repo declares: your lint config, your typecheck rules, your scenario harness, your branch protection, your integration target. munchkins enforces; you define what gets enforced.
+## Munchkins are composable agents
 
-Spawn a coding agent against your repo. It runs in a fresh worktree, runs your gate (`lint` + `typecheck` + `scenario`), and either opens a reviewable PR (`--integrate=pr`) or merges straight into a deployable branch (`--integrate=merge`, the default) — your call per run. Same agent runs from your terminal or from CI. Skills live in your `.claude/skills/`, get committed to git, and your edits survive package upgrades.
+Each munchkin is a short TypeScript file built from one primitive: `AgentBuilder`. Compose prompt steps, deterministic checks (`lint` + `typecheck` + `scenario`), a fixer loop, a sandbox (fresh git worktree by default), a summary writer, an integration strategy (`merge` or `pr`), and optionally a cron schedule. The same building blocks scale from a 5-line single-step agent to the 6-step `director`.
+
+`@serranolabs.io/munchkins` ships zero default agents — you author yours via `/munchkins:new-munchkin`. They live in *your* repo at `.claude/skills/<namespace>:<slug>/SKILL.md` plus a `<name>-agent.ts`, get committed to git, and survive package upgrades. The reference agents in `packages/serrano-munchkins/` (`bug-fix`, `feat-small`, `refactor`, `director`) consume the framework the same way you do — no privileged hooks.
+
+Pick `claude` or `codex` per run (`--cli=claude` is the default); same lifecycle either way.
 
 ```
 prompt ──┬── local CLI:  bun run munchkins <agent>
@@ -123,9 +129,4 @@ Project-local skills go at `.claude/skills/<namespace>-<slug>/SKILL.md` with fro
 
 ## Repo conventions
 
-See [`AGENTS.md`](./AGENTS.md) for the full operating contract: hard rules, command registry, workspace layout, and the manual GitHub setup needed for branch protection and publishing.
-(GitHub) or `glab` (GitLab) for `--integrate=pr`.
-
-## Repo conventions
-
-See [`AGENTS.md`](./AGENTS.md) for the full operating contract: hard rules, command registry, workspace layout, and the manual GitHub setup needed for branch protection and publishing.
+See [`AGENTS.md`](https://github.com/serranoio/munchkins/blob/main/AGENTS.md) for the full operating contract: hard rules, command registry, workspace layout, and the manual GitHub setup needed for branch protection and publishing.

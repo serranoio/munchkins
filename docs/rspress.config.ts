@@ -35,6 +35,7 @@ export default defineConfig({
             {
               text: "Internal",
               items: [
+                { text: "Purpose", link: "/internal/purpose" },
                 { text: "Diagnosis", link: "/internal/diagnosis" },
                 { text: "PRD", link: "/internal/prd" },
                 {
