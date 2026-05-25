@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Analyzed the diff and produced a summary.\n\n{\"commitMessage\": \"feat(math): add multiply function alongside add\", \"markdown\": \"**Goal:** Add a multiply(a, b) function to src/math.ts to sit alongside the existing add export.\\n\\n**Outcome:** The mock pipeline ran the implementer, refactorer, and test-writer steps in sequence and recorded the new export plus a minimal test for it.\\n\\n**How to test manually:**\\n\\n1. From the sandbox repo, run `bun -e 'import(\\\"./src/math.ts\\\").then(m => console.log(m.multiply(3, 4)))'` and expect `12`.\\n2. Run `bun test src/math.test.ts` and expect the multiply test to pass.\\n\\n**Files changed:**\\n\\n- `__mock_0_01-implementer.txt` — mock invocation marker\\n- `__mock_1_02-refactorer.txt` — mock invocation marker\\n- `__mock_2_03-test-writer.txt` — mock invocation marker\"}",
+  "durationMs": 0
+}

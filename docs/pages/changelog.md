@@ -4,6 +4,34 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(scenarios): add feat-small Lights out end-to-end scenario (5b08529)
+**2026-05-24 20:17 PDT · feat-small · 689.4s · $5.0330**
+
+**Goal:** Close half of PURPOSE.md Success #1 by adding a `feat-small` Lights out (`--integrate=merge`) scenario that mirrors the existing `bugfix-agent-e2e` harness and asserts a merged diff plus intact run-log artifacts.
+
+**Outcome:** Added `scenarios/feat-small-agent-e2e.ts` patterned after `scenarios/index.ts`, wired it into the root `scenario` script, and shipped supporting fixtures: a minimal seed repo with a `multiply` TODO in `src/math.ts`, a `feature.md` describing the requested change, and four mock Claude responses — one per pipeline step (implementer → refactorer → test-writer → summary-writer). The harness installs the `munchkins-feat-small` skill into the sandbox, drives the registered agent to completion against the mocks, then asserts `agentResult.succeeded`, the mock call count, zero real `claude` spawns, clean `.worktrees/` and `agent/*` branch teardown, that `main` advanced past the seed with all per-step marker files tracked, and that the four `step-0{1..4}` run-log triples plus a parseable `summary.json` with `agent === "feat-small"` were emitted.
+
+**How to test manually:**
+
+1. From the repo root, run `bun scenarios/feat-small-agent-e2e.ts` from a clean working tree and expect exit code 0 with a `pass` result printed by `printResult`. Confirm the artifact directory is removed afterward (no `.scenario-artifacts/feat-small-agent-e2e-*` leftover).
+2. Run it a second time immediately — `bun scenarios/feat-small-agent-e2e.ts` — and expect another clean exit 0 with no leftover sandbox, `.worktrees/`, or `agent/*` branch in the munchkins repo. Verify with `git worktree list` and `git branch --list 'agent/*'`.
+3. Force the artifact path to stick: `bun scenarios/feat-small-agent-e2e.ts --preserve` and confirm stderr prints `scenario artifacts preserved at: …` and that the directory contains `summary.json`, `events.jsonl`, and the four `step-0{1..4}` `.system.md` / `.user.md` / `.response.txt` triples. Open `summary.json` and confirm `"agent": "feat-small"`.
+4. Confirm the regression gate by running `bun run scenario` from the repo root and verifying the new scenario runs in sequence between `bugfix-pr-integrate-e2e` and `consumer-bootstrap-e2e`, and that the pre-existing scenarios (`scenarios/index.ts`, `scenarios/bugfix-pr-integrate-e2e.ts`) still pass unaffected.
+5. Edge check: temporarily edit `scenarios/fixtures/feat-small-agent-e2e/mock-claude-responses/04-summary-writer.json` to set `"exitCode": 1` and re-run `bun scenarios/feat-small-agent-e2e.ts`. Expect a non-zero exit, an `execution` or `assertion` phase failure in the printed result, and the artifact directory preserved with a `result.json` capturing the failure. Revert the change after.
+
+**Files changed:**
+
+- package.json
+- scenarios/feat-small-agent-e2e.ts
+- scenarios/fixtures/feat-small-agent-e2e/mock-claude-responses/01-implementer.json
+- scenarios/fixtures/feat-small-agent-e2e/mock-claude-responses/02-refactorer.json
+- scenarios/fixtures/feat-small-agent-e2e/mock-claude-responses/03-test-writer.json
+- scenarios/fixtures/feat-small-agent-e2e/mock-claude-responses/04-summary-writer.json
+- scenarios/fixtures/feat-small-agent-e2e/seed-repo/feature.md
+- scenarios/fixtures/feat-small-agent-e2e/seed-repo/package.json
+- scenarios/fixtures/feat-small-agent-e2e/seed-repo/src/math.ts
+
+---
 ## feat(munchkins): meta-skills overhaul — config, discovery, templates, kind, cmux verbosity (4a9d737)
 **2026-05-21 17:27 PDT · feat-small · 1395.0s · $17.3850**
 

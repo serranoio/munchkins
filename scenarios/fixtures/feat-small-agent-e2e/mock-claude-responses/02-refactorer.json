@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Reviewed src/math.ts. The newly added multiply function is already clean — no refactor needed. (mock response)",
+  "durationMs": 0
+}
