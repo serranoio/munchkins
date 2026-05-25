@@ -4,32 +4,32 @@
 
 **Bootstrap any repository into a software factory — at the autonomy level you choose.**
 
+The director's job is to find what's still untrue about that promise and close the gap.
+
 The three Autonomous Modes (defined in full in [README.md](https://github.com/serranoio/munchkins/blob/main/README.md)): **Autopilot** = cron-driven, 0 touches per slice (director reads this file, picks work, ships); **Lights out** = operator-brief → merged main, 1 touch (`--integrate=merge`); **Foreman** = operator-brief → reviewable PR, 2 touches (`--integrate=pr`).
 
 ## Success looks like
 
-Score these every tick. An unmet criterion is a candidate slice. Score by reading the repo — no external system, no run history.
+Score these every tick by executing each `Required:` check against the repo. An unmet check is a candidate slice. **Do not cache state in this file** — the repo is the source of truth. (Previous versions of this file embedded `Today:` snapshots; those drift and lie. Derive, don't cache.)
 
 1. **Every default agent has both integration paths covered by a scenario.**
-   - Lights out (`--integrate=merge`): a `scenarios/<agent>-agent-e2e.ts` (or equivalent) asserts a merged diff.
-   - Foreman (`--integrate=pr`): a `scenarios/<agent>-pr-integrate-e2e.ts` asserts an opened PR.
-   - **Today:** `bug-fix` has both (`scenarios/index.ts` is `bugfix-agent-e2e`; `scenarios/bugfix-pr-integrate-e2e.ts`). `feat-small`, `refactor`, `director`: gaps in one or both.
+   - Required (Lights out, `--integrate=merge`): a `scenarios/<agent>-agent-e2e.ts` (or equivalent — the bug-fix one lives at `scenarios/index.ts`) asserts a merged diff.
+   - Required (Foreman, `--integrate=pr`): a `scenarios/<agent>-pr-integrate-e2e.ts` asserts an opened PR.
 
 2. **Autopilot has end-to-end coverage.**
    - Required: `scenarios/director-multi-dispatch-e2e.ts` drives ≥2 ticks through the director and asserts dispatch to ≥2 distinct child agents.
-   - **Today:** passing.
 
 3. **Consumer bootstrap is gated.**
    - Required: `scenarios/consumer-bootstrap-e2e.ts` runs `bunx munchkins-init` on a fresh repo and asserts `bun run munchkins --help` lists registered agents.
-   - **Today:** passing.
 
 4. **Backend parity is gated.**
-   - Required: a scenario that runs the same agent under `--cli=claude` and `--cli=codex` and asserts identical JSONL stream shape (or documents the known Codex divergences — currently per-call cost).
-   - **Today:** missing. Backend selection is wired (`packages/munchkins/src/builder/spawn-claude.ts` + `--cli` flag) but no scenario asserts parity.
+   - Required: a scenario that runs the same fixture agent under `--cli=claude` and `--cli=codex` and asserts identical JSONL stream shape (or explicitly documents known Codex divergences — currently per-call cost).
 
 5. **The gate is uncircumventable.**
-   - Required: a scenario that runs a failing `lint` / `typecheck` / `scenario` and asserts the worktree is preserved (no merge, no PR) after up to 3 fixer retries.
-   - **Today:** partially covered by `scenarios/dirty-main-e2e.ts` and `scenarios/agent-uncommitted-smoke-e2e.ts`; explicit fixer-cap-then-preserve assertion not yet present.
+   - Required: a scenario that runs a failing `lint` / `typecheck` / `scenario` and asserts the worktree is preserved (no merge, no PR) after the fixer subagent exhausts its 3-iteration cap.
+
+6. **The framework actually ships.**
+   - Required: `npm view @serranolabs.io/munchkins version` matches `packages/munchkins/package.json` version, AND `bun publint packages/munchkins` (or equivalent published-package lint) is clean. If publishing breaks, every other criterion is moot — consumers can't install the framework that wires Lights out, Foreman, or Autopilot in their repos.
 
 ## Out of scope
 
