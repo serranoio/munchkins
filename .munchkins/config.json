@@ -4,5 +4,6 @@
   "skillsDir": "packages/serrano-munchkins/skills",
   "bundleEntry": "packages/serrano-munchkins/agentRegistry.ts",
   "integrate": "merge",
-  "agentIndexFile": "AGENTS.md"
+  "agentIndexFile": "AGENTS.md",
+  "specsDir": "docs/pages/internal/plans"
 }
