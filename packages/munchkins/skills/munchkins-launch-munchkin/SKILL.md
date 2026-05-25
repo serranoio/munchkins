@@ -33,13 +33,22 @@ Read the live agent list:
 bun run munchkins --help
 ```
 
-Match the user's request against the agent descriptions in the help output. Use the description text to judge fit.
+**If the request includes a path to an existing `.md` plan/spec/brief, read it first** — the plan is the primary signal for agent selection; the user's free-text prompt is secondary.
+
+Look for **structured signals first** (these are cross-project conventions and never wrong):
+
+1. **Frontmatter** — `agent: <name>` or `work_type: <type>` at the top of the file. If present, pick the matching agent. Done.
+2. **Director-generated plan** — if the path matches `.director/<run>/plan.md`, read the sibling `.director/<run>/triage.json` (if it exists) and use its `work_type` field. Map `feature` → `feat-small`, `bug-fix` → `bug-fix`, `refactor` → `refactor`, `performance` → `refactor` (until a dedicated performance munchkin exists). Done.
+
+If no structured signal exists, **read the plan and judge** which registered agent best matches its intent — using the agent descriptions in `--help` as the rubric, not any fixed vocabulary. Every project has its own vocabulary; don't keyword-match on verbs or section names. Reason about what the plan is *asking for*: is the goal to restore broken behavior, add new behavior, or reshape existing behavior without changing it? Then pick the agent whose description fits that intent.
+
+Resolution:
 
 - **Single clear candidate** → use it.
-- **Multiple candidates** (e.g., "fix the duplicated logic in X" — could be a bug fix or a refactor) → ask the user which one, listing the candidates.
-- **Zero candidates** (nothing in the user's message hints at which agent) → ask the user which agent to use, listing all registered agents from `--help`.
+- **Multiple plausible candidates** → ask the user which one, listing the candidates and quoting the plan passage that's ambiguous.
+- **Zero candidates** (no plan, no hint in the user's message) → ask the user, listing all registered agents from `--help`.
 
-Never guess.
+Never guess. If the plan signal contradicts the user's prompt (e.g., plan's frontmatter says `bug-fix` but user said "refactor this"), ask — don't silently pick one.
 
 ### 3. Resolve the spec file
 
@@ -50,8 +59,10 @@ Never guess.
 **Otherwise**, generate a new spec at:
 
 ```
-.munchkins/specs/<subcommand>-<short-slug>-<MMDDYYYY-HHMM>.md
+<specsDir>/<subcommand>-<short-slug>-<MMDDYYYY-HHMM>.md
 ```
+
+Where `<specsDir>` is read from `.munchkins/config.json` (`specsDir` key), defaulting to `.munchkins/specs` if absent.
 
 Always timestamp — never overwrite an existing spec.
 
@@ -78,6 +89,7 @@ If any exist, surface them in the confirmation step below — they're either sti
 Read `.munchkins/config.json` if present. Apply config defaults:
 
 - `integrate`: skill default is `pr`. A config value (`"merge"` or `"pr"`) overrides the skill default for this repo.
+- `specsDir`: directory where generated spec files are written. Defaults to `.munchkins/specs` if absent.
 - Explicit user flags always win over config.
 
 Build the resolved command. Example shape:
