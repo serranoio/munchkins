@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Summary complete.\n\n{\"commitMessage\": \"chore(director): idle tick — no candidate qualified\", \"markdown\": \"**Goal:** drive one director tick and verify the Foreman (`--integrate=pr`) integration boundary.\\n\\n**Outcome:** triage emitted upstream-idle; spec and plan honored the short-circuit; dispatch exited 0 without invoking a child munchkin.\\n\\n**Files changed:**\\n- (none — idle tick)\"}",
+  "durationMs": 0
+}

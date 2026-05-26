@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Spec step honored upstream-idle short-circuit; wrote idle marker to spec.md.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/spec.md",
+      "content": "{\"idle\": true, \"reason\": \"upstream idle\"}\n"
+    }
+  ]
+}

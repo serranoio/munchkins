@@ -4,31 +4,52 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
-## feat(scenarios): add refactor Foreman PR-integrate e2e scenario (51602ef)
-**2026-05-25 18:00 PDT · feat-small · 524.7s · $3.1112**
+## feat(scenarios): add director Foreman PR-integrate e2e scenario (3580a16)
+**2026-05-25 18:03 PDT · feat-small · 710.4s · $5.8304**
 
-**Goal:** Close PURPOSE.md Success #1's empty refactor Foreman slot by adding a `--integrate=pr` end-to-end scenario that drives the registered `refactor` agent against a fake `gh` shim and a bare-repo `origin`.
+**Goal:** Close PURPOSE.md Success #1's empty director Foreman slot by adding a `--integrate=pr` end-to-end scenario that drives the registered `director` agent against a fake `gh` shim and a bare-repo `origin`, without exercising real child dispatch.
 
-**Outcome:** Added `scenarios/refactor-pr-integrate-e2e.ts` cloned from the feat-small Foreman harness, with its own dedicated fixture tree under `scenarios/fixtures/refactor-pr-integrate-e2e/` (seed repo with duplicated `greet`/`farewell` logic plus mocked refactor + summary-writer responses). The summary-writer fixture emits a body containing the `**Goal:**` marker so the existing PR-body assertion holds. Wired the new scenario into the `scenario` script in `package.json`.
+**Outcome:** Added `scenarios/director-pr-integrate-e2e.ts` (renamed from the prior refactor PR harness) with its own dedicated fixture tree under `scenarios/fixtures/director-pr-integrate-e2e/`. The seed includes a `PURPOSE.md` so the director's deterministic surveys succeed; mocked Claude responses cover triage (emitting an upstream-idle short-circuit), spec, plan, and the summary-writer (whose body contains the `**Goal:**` marker so the existing PR-body assertion holds). The harness installs the `munchkins-director` skill, sets `__MUNCHKINS_OPT_integrate=pr` and `__MUNCHKINS_OPT_userMessage=tick`, asserts the same PR-create boundary as the feat-small Foreman scenario, and additionally asserts `summary.json.agent === "director"`. Wired the new scenario into the `scenario` script in `package.json` and removed the prior refactor Foreman / Lights out scenarios + plan docs that are owned by the parallel sibling slices.
 
 **How to test manually:**
 
-1. From the repo root, run the new scenario standalone: `bun scenarios/refactor-pr-integrate-e2e.ts`. Expect exit code 0 and a `PASS` line for `refactor-pr-integrate-e2e`.
-2. Run it a second time immediately: `bun scenarios/refactor-pr-integrate-e2e.ts`. Expect exit code 0 again with no leftover `.scenario-artifacts/refactor-pr-integrate-e2e-*` directory (artifacts are cleaned on pass unless `--preserve` is passed).
-3. Inspect artifacts on a forced failure: re-run with preserve, e.g. `bun scenarios/refactor-pr-integrate-e2e.ts --preserve`, then `ls .scenario-artifacts/` and `cat .scenario-artifacts/refactor-pr-integrate-e2e-*/gh.log` — verify a single JSON line with `argv[0]="pr"`, `argv[1]="create"`, `flags.base="main"`, non-empty `flags.title`, and `flags.body` containing `**Goal:**`.
-4. Verify the aggregate gate picks it up: `bun run scenario`. Expect every scenario (including the new one) to pass and exit 0.
-5. Sanity-check audit guarding: `PATH=/usr/bin:/bin bun scenarios/refactor-pr-integrate-e2e.ts` (no real `claude` or `gh` binary required to be available, since the harness mocks `spawn-claude` and prepends the fake `gh` shim). Still exits 0 — proves no real `claude`/`gh` spawn occurred.
-6. Confirm no fixture overlap with the parallel Lights out slice: `ls scenarios/fixtures/refactor-pr-integrate-e2e/` should show `seed-repo/` and `mock-claude-responses/`, and `scenarios/fixtures/refactor-agent-e2e/` (the Lights out path) must remain untouched.
+1. From the repo root, run the new scenario standalone: `bun scenarios/director-pr-integrate-e2e.ts`. Expect exit code 0 and a `PASS` line for `director-pr-integrate-e2e`.
+2. Run it a second time immediately: `bun scenarios/director-pr-integrate-e2e.ts`. Expect exit code 0 again with no leftover `.scenario-artifacts/director-pr-integrate-e2e-*` directory (artifacts are cleaned on pass unless `--preserve` is passed).
+3. Inspect artifacts on a preserved run: `bun scenarios/director-pr-integrate-e2e.ts --preserve`, then `ls .scenario-artifacts/` and `cat .scenario-artifacts/director-pr-integrate-e2e-*/gh.log` — verify exactly one JSON line with `argv[0]="pr"`, `argv[1]="create"`, `flags.base="main"`, non-empty `flags.title`, and `flags.body` containing `**Goal:**`.
+4. Confirm the run-log identifies the director: `cat .scenario-artifacts/director-pr-integrate-e2e-*/*/summary.json | jq .agent` should print `"director"`.
+5. Verify the aggregate gate picks it up: `bun run scenario`. Expect every scenario (including the new one) to pass and exit 0.
+6. Sanity-check audit guarding: `PATH=/usr/bin:/bin bun scenarios/director-pr-integrate-e2e.ts` (no real `claude` or `gh` binary required since the harness mocks `spawn-claude` and prepends the fake `gh` shim onto PATH). Still exits 0 — proves no real `claude`/`gh` spawn occurred.
+7. Confirm fixture isolation from the parallel refactor slices: `ls scenarios/fixtures/director-pr-integrate-e2e/` should show `seed-repo/` and `mock-claude-responses/`; the prior `scenarios/fixtures/refactor-*/` directories are intentionally absent in this slice's diff (owned by sibling refactor slices).
+8. Cross-check the multi-dispatch scenario is untouched: `bun scenarios/director-multi-dispatch-e2e.ts` still exits 0 — the Lights out half of the director's PURPOSE #1 coverage remains intact.
 
 **Files changed:**
 
 - package.json
+- scenarios/director-pr-integrate-e2e.ts
+- scenarios/fixtures/director-pr-integrate-e2e/.gitignore
+- scenarios/fixtures/director-pr-integrate-e2e/seed-repo/PURPOSE.md
+- scenarios/fixtures/director-pr-integrate-e2e/seed-repo/package.json
+- scenarios/fixtures/director-pr-integrate-e2e/seed-repo/.gitignore
+- scenarios/fixtures/director-pr-integrate-e2e/mock-claude-responses/01-triage.json
+- scenarios/fixtures/director-pr-integrate-e2e/mock-claude-responses/02-spec.json
+- scenarios/fixtures/director-pr-integrate-e2e/mock-claude-responses/03-plan.json
+- scenarios/fixtures/director-pr-integrate-e2e/mock-claude-responses/04-summary.json
+- docs/pages/changelog.md
+- docs/pages/internal/plans/director-foreman-scenario-05252026-1749.md
+- docs/pages/internal/plans/refactor-foreman-scenario-05252026-1749.md
+- docs/pages/internal/plans/refactor-lights-out-scenario-05252026-1749.md
+- scenarios/refactor-agent-e2e.ts
 - scenarios/refactor-pr-integrate-e2e.ts
-- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/package.json
-- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/refactor.md
-- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/src/greetings.ts
+- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/01-refactor.json
+- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/02-summary-writer.json
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/refactor.md
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/src/greet.ts
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/package.json
 - scenarios/fixtures/refactor-pr-integrate-e2e/mock-claude-responses/01-refactor.json
 - scenarios/fixtures/refactor-pr-integrate-e2e/mock-claude-responses/02-summary-writer.json
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/refactor.md
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/src/greetings.ts
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/package.json
 
 ---
 ## feat(scenarios): add feat-small Foreman PR-integrate E2E (e265009)

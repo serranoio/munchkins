@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Plan step honored upstream-idle short-circuit; wrote idle marker to plan.md.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/plan.md",
+      "content": "{\"idle\": true, \"reason\": \"upstream idle\"}\n"
+    }
+  ]
+}

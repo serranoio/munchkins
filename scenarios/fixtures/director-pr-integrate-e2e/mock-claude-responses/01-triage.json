@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "output": "Triage complete. All PURPOSE.md success criteria are already satisfied — emitting idle short-circuit.",
+  "durationMs": 0,
+  "writeFiles": [
+    {
+      "path": ".director/<RUN>/triage.json",
+      "content": "{\n  \"idle\": true,\n  \"reason\": \"PURPOSE.md success criteria all satisfied — fixture is intentionally idle to exercise the director's PR-integrate boundary.\"\n}\n"
+    }
+  ]
+}

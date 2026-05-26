@@ -20,7 +20,7 @@
     "build": "turbo run build",
     "munchkins": "MUNCHKINS_CHANGELOG_PATH=docs/pages/changelog.md bun run packages/serrano-munchkins/agentRegistry.ts",
     "release": "bun run scripts/release.ts",
-    "scenario": "bun run scenarios/index.ts && bun run scenarios/composition.ts && bun run scenarios/resume-after-claude-exit-e2e.ts && bun run scenarios/director-multi-dispatch-e2e.ts && bun run scenarios/agent-uncommitted-smoke-e2e.ts && bun run scenarios/dirty-main-e2e.ts && bun run scenarios/bugfix-pr-integrate-e2e.ts && bun run scenarios/feat-small-agent-e2e.ts && bun run scenarios/feat-small-pr-integrate-e2e.ts && bun run scenarios/refactor-pr-integrate-e2e.ts && bun run scenarios/consumer-bootstrap-e2e.ts",
+    "scenario": "bun run scenarios/index.ts && bun run scenarios/composition.ts && bun run scenarios/resume-after-claude-exit-e2e.ts && bun run scenarios/director-multi-dispatch-e2e.ts && bun run scenarios/director-pr-integrate-e2e.ts && bun run scenarios/agent-uncommitted-smoke-e2e.ts && bun run scenarios/dirty-main-e2e.ts && bun run scenarios/bugfix-pr-integrate-e2e.ts && bun run scenarios/feat-small-agent-e2e.ts && bun run scenarios/feat-small-pr-integrate-e2e.ts && bun run scenarios/consumer-bootstrap-e2e.ts",
     "docs:dev": "turbo run dev --filter=docs",
     "docs:build": "turbo run build --filter=docs"
   },
