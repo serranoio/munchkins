@@ -4,6 +4,55 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(scenarios): add refactor agent Lights out e2e scenario (df24612)
+**2026-05-25 18:00 PDT · feat-small · 514.4s · $3.4352**
+
+**Goal:** Close the refactor Lights out gap from PURPOSE.md Success #1 by adding a `--integrate=merge` end-to-end scenario for the `refactor` agent, asserting a merged diff on `main`.
+
+**Outcome:** Added `scenarios/refactor-agent-e2e.ts` patterned after the feat-small Lights out harness — it installs the `munchkins-refactor` skill into a sandboxed seed repo, runs the `refactor` agent against mocked Claude responses, and asserts the squash-merge landed marker files on `main`, `summary.json.agent === "refactor"`, and the two-step run-log artifacts (agent + summary writer) are present and non-empty. Wired the new scenario into the `scenario` script in `package.json`. Fixtures live under `scenarios/fixtures/refactor-agent-e2e/` with a seed repo containing a `src/greet.ts` file whose duplicated trim-and-titlecase preamble the agent is instructed to extract.
+
+**How to test manually:**
+
+1. From the repo root, run the new scenario in isolation and confirm a clean pass:
+   ```
+   bun scenarios/refactor-agent-e2e.ts
+   ```
+   Expected: exits 0, prints a `pass` result, and leaves no `.scenario-artifacts/refactor-agent-e2e-*` directory behind (ephemeral cleanup on pass).
+2. Re-run it back-to-back to prove there is no leftover state between runs:
+   ```
+   bun scenarios/refactor-agent-e2e.ts && bun scenarios/refactor-agent-e2e.ts
+   ```
+   Expected: both invocations exit 0.
+3. Inspect the preserved artifacts to eyeball what the agent produced:
+   ```
+   bun scenarios/refactor-agent-e2e.ts --preserve
+   ls .scenario-artifacts/refactor-agent-e2e-*/refactor-*/
+   cat .scenario-artifacts/refactor-agent-e2e-*/refactor-*/summary.json
+   ```
+   Expected: the run-log subdir contains `summary.json` (with `"agent": "refactor"`), a non-empty `events.jsonl`, plus `step-01-agent.{system,user,response}` and `step-02-summary.{system,user,response}` files.
+4. Confirm the full scenario gate still passes (catches any ordering/state regressions against sibling scenarios):
+   ```
+   bun run scenario
+   ```
+   Expected: every scenario in the chain — including the existing bug-fix and feat-small Lights out / Foreman pairs — exits 0.
+5. Sanity-check static gates:
+   ```
+   bun run lint && bun run typecheck
+   ```
+   Expected: both green.
+6. Edge case — confirm the audit guard genuinely blocks real Claude spawns. Temporarily comment out the `mock.module(spawnClaudeAbsPath, ...)` block in `scenarios/refactor-agent-e2e.ts` and re-run step 1. Expected: harness fails in the `assertion` phase with `audit guard: N real \`claude\` spawn attempt(s) occurred` (or fails earlier on the mock-call audit). Revert the change after confirming.
+
+**Files changed:**
+
+- package.json
+- scenarios/refactor-agent-e2e.ts
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/package.json
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/refactor.md
+- scenarios/fixtures/refactor-agent-e2e/seed-repo/src/greet.ts
+- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/01-refactor.json
+- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/02-summary-writer.json
+
+---
 ## feat(scenarios): add feat-small Foreman PR-integrate E2E (e265009)
 **2026-05-24 20:31 PDT · feat-small · 391.9s · $1.7435**
 

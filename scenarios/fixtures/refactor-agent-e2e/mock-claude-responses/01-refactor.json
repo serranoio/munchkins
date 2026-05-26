@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Extracted the trim-and-titlecase preamble in src/greet.ts into a shared normalizeName helper used by both formatGreet and formatFarewell. (mock response)",
+  "durationMs": 0
+}

@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Analyzed the diff and produced a summary.\n\n{\"commitMessage\": \"refactor(greet): extract normalizeName helper shared by formatGreet and formatFarewell\", \"markdown\": \"**Goal:** Extract the duplicated trim-and-titlecase preamble in src/greet.ts into a shared helper.\\n\\n**Outcome:** The mock pipeline introduced a shared `normalizeName(name)` helper in src/greet.ts and rewrote both formatGreet and formatFarewell to call it instead of repeating the inline preamble.\\n\\n**Refactor type:** extraction\\n\\n**Lines changed:**\\n\\n| File | Before | After | \\u0394 |\\n|------|--------|-------|---|\\n| src/greet.ts | 11 | 11 | 0 |\\n\\n**Total:** 11 \\u2192 11 (\\u0394 0)\\n\\n**Files changed:**\\n- `__mock_0_01-refactor.txt` \\u2014 mock invocation marker\\n- src/greet.ts\"}",
+  "durationMs": 0
+}
