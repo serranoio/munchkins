@@ -4,53 +4,31 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
-## feat(scenarios): add refactor agent Lights out e2e scenario (df24612)
-**2026-05-25 18:00 PDT · feat-small · 514.4s · $3.4352**
+## feat(scenarios): add refactor Foreman PR-integrate e2e scenario (51602ef)
+**2026-05-25 18:00 PDT · feat-small · 524.7s · $3.1112**
 
-**Goal:** Close the refactor Lights out gap from PURPOSE.md Success #1 by adding a `--integrate=merge` end-to-end scenario for the `refactor` agent, asserting a merged diff on `main`.
+**Goal:** Close PURPOSE.md Success #1's empty refactor Foreman slot by adding a `--integrate=pr` end-to-end scenario that drives the registered `refactor` agent against a fake `gh` shim and a bare-repo `origin`.
 
-**Outcome:** Added `scenarios/refactor-agent-e2e.ts` patterned after the feat-small Lights out harness — it installs the `munchkins-refactor` skill into a sandboxed seed repo, runs the `refactor` agent against mocked Claude responses, and asserts the squash-merge landed marker files on `main`, `summary.json.agent === "refactor"`, and the two-step run-log artifacts (agent + summary writer) are present and non-empty. Wired the new scenario into the `scenario` script in `package.json`. Fixtures live under `scenarios/fixtures/refactor-agent-e2e/` with a seed repo containing a `src/greet.ts` file whose duplicated trim-and-titlecase preamble the agent is instructed to extract.
+**Outcome:** Added `scenarios/refactor-pr-integrate-e2e.ts` cloned from the feat-small Foreman harness, with its own dedicated fixture tree under `scenarios/fixtures/refactor-pr-integrate-e2e/` (seed repo with duplicated `greet`/`farewell` logic plus mocked refactor + summary-writer responses). The summary-writer fixture emits a body containing the `**Goal:**` marker so the existing PR-body assertion holds. Wired the new scenario into the `scenario` script in `package.json`.
 
 **How to test manually:**
 
-1. From the repo root, run the new scenario in isolation and confirm a clean pass:
-   ```
-   bun scenarios/refactor-agent-e2e.ts
-   ```
-   Expected: exits 0, prints a `pass` result, and leaves no `.scenario-artifacts/refactor-agent-e2e-*` directory behind (ephemeral cleanup on pass).
-2. Re-run it back-to-back to prove there is no leftover state between runs:
-   ```
-   bun scenarios/refactor-agent-e2e.ts && bun scenarios/refactor-agent-e2e.ts
-   ```
-   Expected: both invocations exit 0.
-3. Inspect the preserved artifacts to eyeball what the agent produced:
-   ```
-   bun scenarios/refactor-agent-e2e.ts --preserve
-   ls .scenario-artifacts/refactor-agent-e2e-*/refactor-*/
-   cat .scenario-artifacts/refactor-agent-e2e-*/refactor-*/summary.json
-   ```
-   Expected: the run-log subdir contains `summary.json` (with `"agent": "refactor"`), a non-empty `events.jsonl`, plus `step-01-agent.{system,user,response}` and `step-02-summary.{system,user,response}` files.
-4. Confirm the full scenario gate still passes (catches any ordering/state regressions against sibling scenarios):
-   ```
-   bun run scenario
-   ```
-   Expected: every scenario in the chain — including the existing bug-fix and feat-small Lights out / Foreman pairs — exits 0.
-5. Sanity-check static gates:
-   ```
-   bun run lint && bun run typecheck
-   ```
-   Expected: both green.
-6. Edge case — confirm the audit guard genuinely blocks real Claude spawns. Temporarily comment out the `mock.module(spawnClaudeAbsPath, ...)` block in `scenarios/refactor-agent-e2e.ts` and re-run step 1. Expected: harness fails in the `assertion` phase with `audit guard: N real \`claude\` spawn attempt(s) occurred` (or fails earlier on the mock-call audit). Revert the change after confirming.
+1. From the repo root, run the new scenario standalone: `bun scenarios/refactor-pr-integrate-e2e.ts`. Expect exit code 0 and a `PASS` line for `refactor-pr-integrate-e2e`.
+2. Run it a second time immediately: `bun scenarios/refactor-pr-integrate-e2e.ts`. Expect exit code 0 again with no leftover `.scenario-artifacts/refactor-pr-integrate-e2e-*` directory (artifacts are cleaned on pass unless `--preserve` is passed).
+3. Inspect artifacts on a forced failure: re-run with preserve, e.g. `bun scenarios/refactor-pr-integrate-e2e.ts --preserve`, then `ls .scenario-artifacts/` and `cat .scenario-artifacts/refactor-pr-integrate-e2e-*/gh.log` — verify a single JSON line with `argv[0]="pr"`, `argv[1]="create"`, `flags.base="main"`, non-empty `flags.title`, and `flags.body` containing `**Goal:**`.
+4. Verify the aggregate gate picks it up: `bun run scenario`. Expect every scenario (including the new one) to pass and exit 0.
+5. Sanity-check audit guarding: `PATH=/usr/bin:/bin bun scenarios/refactor-pr-integrate-e2e.ts` (no real `claude` or `gh` binary required to be available, since the harness mocks `spawn-claude` and prepends the fake `gh` shim). Still exits 0 — proves no real `claude`/`gh` spawn occurred.
+6. Confirm no fixture overlap with the parallel Lights out slice: `ls scenarios/fixtures/refactor-pr-integrate-e2e/` should show `seed-repo/` and `mock-claude-responses/`, and `scenarios/fixtures/refactor-agent-e2e/` (the Lights out path) must remain untouched.
 
 **Files changed:**
 
 - package.json
-- scenarios/refactor-agent-e2e.ts
-- scenarios/fixtures/refactor-agent-e2e/seed-repo/package.json
-- scenarios/fixtures/refactor-agent-e2e/seed-repo/refactor.md
-- scenarios/fixtures/refactor-agent-e2e/seed-repo/src/greet.ts
-- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/01-refactor.json
-- scenarios/fixtures/refactor-agent-e2e/mock-claude-responses/02-summary-writer.json
+- scenarios/refactor-pr-integrate-e2e.ts
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/package.json
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/refactor.md
+- scenarios/fixtures/refactor-pr-integrate-e2e/seed-repo/src/greetings.ts
+- scenarios/fixtures/refactor-pr-integrate-e2e/mock-claude-responses/01-refactor.json
+- scenarios/fixtures/refactor-pr-integrate-e2e/mock-claude-responses/02-summary-writer.json
 
 ---
 ## feat(scenarios): add feat-small Foreman PR-integrate E2E (e265009)

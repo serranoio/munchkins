@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Analyzed the diff and produced a summary.\n\n{\"commitMessage\": \"refactor(greetings): extract shared formatName helper\", \"markdown\": \"**Goal:** Collapse the duplicated name-normalization logic in src/greetings.ts so greet and farewell share a single helper.\\n\\n**Outcome:** Introduced a private formatName(name) helper; greet and farewell now delegate to it for trim + capitalize.\\n\\n**Refactor type:** extraction\\n\\n**Lines changed:**\\n\\n| File | Before | After | Δ |\\n|------|--------|-------|---|\\n| src/greetings.ts | 12 | 10 | −2 |\\n\\n**Total:** 12 → 10 (Δ −2)\\n\\n**Files changed:**\\n- `__mock_0_01-refactor.txt` — mock invocation marker\\n- src/greetings.ts\"}",
+  "durationMs": 0
+}

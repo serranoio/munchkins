@@ -1,0 +1,5 @@
+{
+  "exitCode": 0,
+  "output": "Extracted shared formatName helper in src/greetings.ts; greet and farewell now delegate to it. (mock response)",
+  "durationMs": 0
+}
