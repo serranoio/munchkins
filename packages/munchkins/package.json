@@ -1,6 +1,6 @@
 {
   "name": "@serranolabs.io/munchkins",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "type": "module",
   "main": "src/index.ts",
