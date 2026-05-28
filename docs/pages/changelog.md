@@ -4,6 +4,16 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## chore(integrate): hard-fail on dirty repoRoot, remove snapshotDirtyRepoRoot (0.3.0)
+**2026-05-27**
+
+- Removed `snapshotDirtyRepoRoot` function and `SNAPSHOT_MSG_PREFIX` export from `integrate.ts`.
+- `integrateBranch` now returns `{ ok: false }` immediately when `repoRoot` is dirty instead of auto-committing a snapshot; consumers must reject dirty repos at their `ensure-repo-clean` step before munchkin runs.
+- Deleted `scenarios/dirty-main-e2e.ts`; replaced the five D1-D5 snapshot-tolerance unit tests with three tighter reject-on-dirty tests (D1/D3/D4) that assert the new contract.
+- Version bumped to 0.3.0.
+
+---
+
 ## feat(scenarios): add director Foreman PR-integrate e2e scenario (3580a16)
 **2026-05-25 18:03 PDT · feat-small · 710.4s · $5.8304**
 

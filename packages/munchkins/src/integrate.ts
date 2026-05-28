@@ -20,13 +20,6 @@ The user prompt names the conflicted files and includes the original goal of the
 
 const FIXER_DISALLOWED_TOOLS = ["Bash"];
 
-/**
- * Prefix on the synthetic commit `snapshotDirtyRepoRoot` writes when `repoRoot`
- * was dirty pre-integration. The trailing `${Date.now()}` makes each snapshot
- * commit unique; recovery tooling matches on this prefix.
- */
-export const SNAPSHOT_MSG_PREFIX = "munchkins: pre-merge snapshot of dirty repoRoot @";
-
 export interface RebaseAndResolveOptions {
   /** Directory where the branch to rebase is currently checked out. Any git checkout works — worktree, clone, bind-mount, etc. */
   workdir: string;
@@ -92,9 +85,9 @@ export async function rebaseAndResolve(
 
   say(`rebase: onto ${baseBranch}`);
   // `-X theirs` resolves content conflicts in favor of the side being replayed
-  // (the agent's commits). This lets `integrateBranch`'s dirty-tree pre-flight
-  // snapshot commit lose to the agent on overlap, so the rebase + squash-merge
-  // path completes without manual fixer involvement. For clean rebases the
+  // (the agent's commits). Kept as a general conflict preference; the original
+  // motivation (losing to a synthetic snapshot commit) is gone now that
+  // integrateBranch hard-fails on a dirty repoRoot. For clean rebases the
   // flag is a no-op.
   let rebase = await $`git rebase -X theirs ${baseBranch}`.cwd(workdir).nothrow().quiet();
 
@@ -226,8 +219,21 @@ export type IntegrateResult = RebaseAndResolveResult;
  * worktree).
  */
 export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
-  const snapshotResult = await snapshotDirtyRepoRoot(opts);
-  if (snapshotResult && !snapshotResult.ok) return snapshotResult;
+  // Exclude the `.worktrees/` directory: worktrees live there by convention and
+  // are not operator dirty content. Real consumer repos gitignore `.worktrees/`;
+  // this pathspec exclusion covers repos (e.g. test fixtures) that do not.
+  const dirty = (
+    await $`git status --porcelain -- . ':!.worktrees'`.cwd(opts.repoRoot).quiet().nothrow()
+  ).stdout
+    .toString()
+    .trim();
+  if (dirty) {
+    return {
+      ok: false,
+      reason: `integrateBranch: repoRoot is dirty — commit or stash before integration. Consumers should reject dirty repos at their ensure-repo-clean step. Dirty paths:\n${dirty}`,
+      fixerIters: 0,
+    };
+  }
 
   const r = await rebaseAndResolve(opts);
   if (!r.ok) return r;
@@ -458,55 +464,6 @@ async function createGitlabMR(
     },
   );
   return parseCreateResult("glab mr create", r);
-}
-
-/**
- * If `repoRoot` has any dirty/staged/untracked content, stage all of it and
- * commit it on `baseBranch` as a single snapshot. Without this pre-flight the
- * subsequent squash merge could fail on dirty tracked changes or an untracked
- * file could collide with an agent-created path. The snapshot commit is the
- * recovery anchor: the user can find it via
- * `git log --grep="munchkins: pre-merge snapshot"` and resurrect individual
- * files with `git show <sha>:<path>`.
- *
- * Returns `undefined` when `repoRoot` was already clean (the caller proceeds
- * with the existing rebase + squash-merge path unchanged). Returns an
- * `IntegrateResult` only on failure.
- */
-async function snapshotDirtyRepoRoot(opts: IntegrateOptions): Promise<IntegrateResult | undefined> {
-  const dirty = (await $`git status --porcelain`.cwd(opts.repoRoot).quiet().nothrow()).stdout
-    .toString()
-    .trim();
-  if (dirty.length === 0) return undefined;
-
-  const msg = `${SNAPSHOT_MSG_PREFIX} ${Date.now()}`;
-  const addResult = await $`git add -A`.cwd(opts.repoRoot).nothrow().quiet();
-  if (addResult.exitCode !== 0) {
-    return {
-      ok: false,
-      reason: `pre-merge stage failed: ${addResult.stderr.toString().slice(-500)}`,
-      fixerIters: 0,
-    };
-  }
-
-  const commitResult =
-    await $`git -c user.name=munchkins -c user.email=munchkins@local commit -m ${msg}`
-      .cwd(opts.repoRoot)
-      .nothrow()
-      .quiet();
-  if (commitResult.exitCode !== 0) {
-    return {
-      ok: false,
-      reason: `pre-merge snapshot commit failed: ${commitResult.stderr.toString().slice(-500)}`,
-      fixerIters: 0,
-    };
-  }
-
-  const sha = (await $`git rev-parse --short HEAD`.cwd(opts.repoRoot).quiet()).stdout
-    .toString()
-    .trim();
-  opts.log?.(`integrate: repoRoot was dirty; committed snapshot ${sha}`);
-  return undefined;
 }
 
 async function listConflictedFiles(cwd: string): Promise<string[]> {
