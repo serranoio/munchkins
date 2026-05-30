@@ -474,6 +474,7 @@ export class AgentBuilder {
           originalGoal: state.userMessageSnapshot,
           commitMessage: runLog.getAgentSummaryCommitMessage() ?? commitMessage,
           markdownSummary: runLog.getAgentSummaryMarkdown(),
+          operatorWipContext: { agent: this.name, slug: state.slug },
           log: (line) => logger.integrationLine(line),
           onFixerInvocation: (info) =>
             runLog.fixerInvocation(

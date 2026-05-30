@@ -233,14 +233,20 @@ describe("integrateBranch", () => {
   });
 });
 
-describe("integrateBranch rejects dirty repoRoot", () => {
+describe("integrateBranch commits dirty repoRoot as operator WIP", () => {
   let repo: Repo;
   beforeEach(async () => {
     repo = await createRepo();
   });
   afterEach(() => repo.cleanup());
 
-  async function expectDirtyRejection(originalGoal: string) {
+  const OPERATOR_WIP = { agent: "bug-fix", slug: "fix-it" };
+  const EXPECTED_WIP_SUBJECT = `wip(operator): changes captured before ${OPERATOR_WIP.agent}/${OPERATOR_WIP.slug}`;
+
+  test("D1: dirty tracked file lands as operator WIP under agent squash", async () => {
+    await commitFile(repo.path, "README.md", "# original\n", "add readme");
+    await Bun.write(join(repo.path, "README.md"), "# dirty edit\n");
+
     const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
     await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
 
@@ -250,33 +256,122 @@ describe("integrateBranch rejects dirty repoRoot", () => {
       branch,
       repoRoot: repo.path,
       baseBranch: "main",
-      originalGoal,
+      originalGoal: "D1",
       cli,
       postFixChecks: [],
+      commitMessage: "feat: fresh module",
+      operatorWipContext: OPERATOR_WIP,
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/dirty/i);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fixerIters).toBe(0);
     expect(cli.invocations).toBe(0);
-  }
 
-  test("D1: unstaged tracked modification rejected", async () => {
+    const headSubject = (await $`git log -1 --format=%s main`.cwd(repo.path).quiet()).text().trim();
+    expect(headSubject).toBe("feat: fresh module");
+
+    const parentSubject = (await $`git log -1 --format=%s main^`.cwd(repo.path).quiet())
+      .text()
+      .trim();
+    expect(parentSubject).toBe(EXPECTED_WIP_SUBJECT);
+
+    // The dirty edit is preserved in the WIP commit's tree.
+    const wipContent = (await $`git show main^:README.md`.cwd(repo.path).quiet()).text();
+    expect(wipContent).toBe("# dirty edit\n");
+  });
+
+  test("D2: untracked file is committed into operator WIP and reaches main", async () => {
+    await commitFile(repo.path, "seed.md", "seed\n", "seed");
+    await Bun.write(join(repo.path, "scratch.txt"), "scratch content\n");
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D2",
+      cli: new FailIfSpawnedCLI(),
+      postFixChecks: [],
+      commitMessage: "feat: fresh module",
+      operatorWipContext: OPERATOR_WIP,
+    });
+
+    expect(result.ok).toBe(true);
+
+    const parentSubject = (await $`git log -1 --format=%s main^`.cwd(repo.path).quiet())
+      .text()
+      .trim();
+    expect(parentSubject).toBe(EXPECTED_WIP_SUBJECT);
+
+    // The previously-untracked file is now tracked at the operator WIP commit
+    // and survives onto main's working tree.
+    const wipTracked = (await $`git show main^:scratch.txt`.cwd(repo.path).quiet()).text();
+    expect(wipTracked).toBe("scratch content\n");
+    expect(await Bun.file(join(repo.path, "scratch.txt")).text()).toBe("scratch content\n");
+  });
+
+  test("D3: dirty content under .worktrees/ is ignored — no operator WIP commit", async () => {
+    const mainShaBefore = (await $`git rev-parse main`.cwd(repo.path).quiet()).text().trim();
+
+    // Set up an agent branch first so the `.worktrees/` directory exists.
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    // Drop a stray file under `.worktrees/` directly in repoRoot — the pathspec
+    // exclusion must skip it so integration proceeds as if clean.
+    await Bun.write(join(repo.path, ".worktrees", "stray.txt"), "ignored\n");
+
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D3",
+      cli: new FailIfSpawnedCLI(),
+      postFixChecks: [],
+      commitMessage: "feat: fresh module",
+      operatorWipContext: OPERATOR_WIP,
+    });
+
+    expect(result.ok).toBe(true);
+
+    const headSubject = (await $`git log -1 --format=%s main`.cwd(repo.path).quiet()).text().trim();
+    expect(headSubject).toBe("feat: fresh module");
+
+    // No operator WIP between main^ and the pre-integration tip — main advanced
+    // by exactly one commit (the squash).
+    const parentSha = (await $`git rev-parse main^`.cwd(repo.path).quiet()).text().trim();
+    expect(parentSha).toBe(mainShaBefore);
+  });
+
+  test("D4: omitting operatorWipContext falls back to branch-named WIP subject", async () => {
     await commitFile(repo.path, "README.md", "# original\n", "add readme");
     await Bun.write(join(repo.path, "README.md"), "# dirty edit\n");
-    await expectDirtyRejection("D1");
-  });
 
-  test("D3: staged-but-not-committed change rejected", async () => {
-    await commitFile(repo.path, "notes.md", "# notes\n", "add notes");
-    await Bun.write(join(repo.path, "notes.md"), "# staged edit\n");
-    await $`git add notes.md`.cwd(repo.path).env(gitEnv()).quiet();
-    await expectDirtyRejection("D3");
-  });
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
 
-  test("D4: untracked file rejected", async () => {
-    await commitFile(repo.path, "seed.md", "seed\n", "seed");
-    await Bun.write(join(repo.path, "scratch.txt"), "scratch\n");
-    await expectDirtyRejection("D4");
+    const result = await integrateBranch({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "D4",
+      cli: new FailIfSpawnedCLI(),
+      postFixChecks: [],
+      commitMessage: "feat: fresh module",
+      // operatorWipContext intentionally omitted — exercise the fallback.
+    });
+
+    expect(result.ok).toBe(true);
+
+    const parentSubject = (await $`git log -1 --format=%s main^`.cwd(repo.path).quiet())
+      .text()
+      .trim();
+    expect(parentSubject).toBe(`wip(operator): changes captured before ${branch}`);
   });
 });
 
@@ -310,6 +405,33 @@ describe("integrateMerge strategy", () => {
 
     // Squash lands agent's content in a single commit; verify via working tree.
     expect(await Bun.file(join(repo.path, "fresh.ts")).text()).toContain("fresh = 1");
+  });
+
+  test("integrateMerge threads operatorWipContext through to the WIP commit subject", async () => {
+    await commitFile(repo.path, "README.md", "# original\n", "add readme");
+    await Bun.write(join(repo.path, "README.md"), "# dirty edit\n");
+
+    const { path: workdir, branch } = await createWorktree("bug-fix", repo.path);
+    await commitFile(workdir, "fresh.ts", "export const fresh = 1;\n", "fresh feature");
+
+    const result = await integrateMerge().run({
+      workdir,
+      branch,
+      repoRoot: repo.path,
+      baseBranch: "main",
+      originalGoal: "thread context",
+      cli: new FailIfSpawnedCLI(),
+      postFixChecks: [],
+      commitMessage: "feat: fresh module",
+      operatorWipContext: { agent: "feat-small", slug: "thread-it" },
+    });
+
+    expect(result.ok).toBe(true);
+
+    const parentSubject = (await $`git log -1 --format=%s main^`.cwd(repo.path).quiet())
+      .text()
+      .trim();
+    expect(parentSubject).toBe("wip(operator): changes captured before feat-small/thread-it");
   });
 
   test("integrateMerge auto-resolves content conflict to agent via -X theirs (I2)", async () => {

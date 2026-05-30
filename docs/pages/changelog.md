@@ -4,6 +4,62 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## feat(integrate): commit dirty repoRoot as operator WIP instead of hard-failing (484fcae)
+**2026-05-27 20:46 PDT · feat-small · 1292.6s · $11.2000**
+
+**Goal:** Reverse the hard-fail on dirty `repoRoot` in `integrateBranch` — instead, commit the operator's dirty content as a first-class WIP commit on `main` with a humane templated subject, then rebase + squash-merge the agent's branch on top.
+
+**Outcome:** `integrateBranch` now calls a new private `commitDirtyRepoRoot` helper that detects dirty content (excluding `.worktrees/`), stages it (`git add -A`, with a `:!.worktrees` pathspec exclusion only when `.worktrees` isn't already gitignored), and commits it under the subject `wip(operator): changes captured before <agent>/<slug>` (or `…before <branch>` when no `operatorWipContext` is threaded through). The agent-builder populates the context from the agent's name + slug; `integrateMerge` threads it through. Replaced the three reject-on-dirty unit tests with four commit-on-dirty tests (D1 tracked, D2 untracked, D3 `.worktrees/` exclusion, D4 fallback subject) plus an `integrateMerge` threading test, and added `scenarios/dirty-main-commit-e2e.ts` wired into `bun run scenario`. Bumped to 0.4.0 with a changelog entry. Also extracted a small `munchkinsCommit` helper so the operator-identity git config is in one place.
+
+**How to test manually:**
+
+1. From repo root, run the new scenario directly to exercise the full bug-fix pipeline against a sandbox with both dirty tracked + untracked content:
+   ```
+   bun run scenarios/dirty-main-commit-e2e.ts
+   ```
+   Expected: exits 0 and prints a `pass` result line. On failure, sandbox + artifacts are preserved under `.scenario-artifacts/dirty-main-commit-e2e-<ts>/`.
+2. Run the full scenario suite to confirm no other scenarios regressed:
+   ```
+   bun run scenario
+   ```
+   Expected: every scenario including `dirty-main-commit-e2e.ts` exits 0.
+3. Run the new unit tests in isolation to see the D1–D4 + `integrateMerge` threading assertions:
+   ```
+   bun test packages/munchkins/src/integrate.test.ts
+   ```
+   Expected: the `integrateBranch commits dirty repoRoot as operator WIP` describe block (D1–D4) and the new `integrateMerge threads operatorWipContext…` test all pass.
+4. Out-of-band check the scenario doesn't cover: simulate the operator-recovery story by hand. In a throwaway sandbox after running the scenario with `--preserve`:
+   ```
+   bun run scenarios/dirty-main-commit-e2e.ts --preserve
+   cd <preserved sandbox path printed on failure, or cd into the sandbox before cleanup>
+   git log --oneline main -5
+   ```
+   Confirm the second line on `main` is `wip(operator): changes captured before bug-fix/<slug>` and is a normal commit (no synthetic prefix). Then verify operator recovery is just standard git: `git commit --amend -m "docs: my real subject"` rewrites it, and `git reset HEAD^` would pop it back off cleanly.
+5. Edge case — `.worktrees/` exclusion: in any sandbox with an agent worktree already created, drop a file at `.worktrees/stray.txt` and re-run integration. Expected: integration proceeds as if clean, no operator WIP commit is created, and `git log main^` shows the pre-integration tip (this is what D3 verifies, but worth eyeballing once).
+6. Fallback subject path: call `integrateBranch` (or `integrateMerge`) without `operatorWipContext` against a dirty repo — expected subject is `wip(operator): changes captured before <branch>` (D4 covers this; the smallest manual repro is just reading D4 in `integrate.test.ts`).
+
+**Files changed:**
+
+- packages/munchkins/src/integrate.ts
+- packages/munchkins/src/integrate.test.ts
+- packages/munchkins/src/builder/agent-builder.ts
+- packages/munchkins/package.json
+- docs/pages/changelog.md
+- scenarios/dirty-main-commit-e2e.ts
+- package.json
+
+---
+## feat(integrate): commit dirty repoRoot as operator WIP instead of hard-failing (0.4.0)
+**2026-05-27**
+
+- `integrateBranch` no longer aborts when `repoRoot` is dirty. The operator's dirty content (tracked + untracked, excluding `.worktrees/`) is staged and committed on `baseBranch` as a real first-class WIP commit before the rebase, then the agent's squash-merge lands on top.
+- WIP commit subject is templated as `wip(operator): changes captured before <agent>/<slug>` (via the new optional `IntegrateOptions.operatorWipContext`), falling back to `wip(operator): changes captured before <branch>` when the context is absent. No synthetic prefix is exported — recovery uses normal `git log` / `git commit --amend` / `git reset`.
+- Replaced the 3 reject-on-dirty unit tests with 3 commit-on-dirty tests (D1 tracked, D2 untracked, D3 `.worktrees/` exclusion).
+- Added `scenarios/dirty-main-commit-e2e.ts` driving the `bug-fix` agent against a sandbox seeded with both dirty tracked and untracked content; asserts the post-integrate history is `<agent squash> ⟶ <operator wip> ⟶ <seed>` and the previously-untracked file reaches `main`.
+- Version bumped to 0.4.0.
+
+---
+
 ## chore(integrate): hard-fail on dirty repoRoot, remove snapshotDirtyRepoRoot (0.3.0)
 **2026-05-27**
 

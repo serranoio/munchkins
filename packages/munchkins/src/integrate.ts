@@ -85,10 +85,10 @@ export async function rebaseAndResolve(
 
   say(`rebase: onto ${baseBranch}`);
   // `-X theirs` resolves content conflicts in favor of the side being replayed
-  // (the agent's commits). Kept as a general conflict preference; the original
-  // motivation (losing to a synthetic snapshot commit) is gone now that
-  // integrateBranch hard-fails on a dirty repoRoot. For clean rebases the
-  // flag is a no-op.
+  // (the agent's commits). This matters when `integrateBranch` lands an
+  // operator-WIP commit on `baseBranch` and the agent's work touches the same
+  // lines — the agent should win on overlap. For clean rebases the flag is a
+  // no-op.
   let rebase = await $`git rebase -X theirs ${baseBranch}`.cwd(workdir).nothrow().quiet();
 
   let fixerIters = 0;
@@ -195,6 +195,12 @@ export interface IntegrateOptions extends RebaseAndResolveOptions {
   commitMessage?: string;
   /** Body appended to the squash commit message. Omitted when absent. */
   markdownSummary?: string;
+  /**
+   * When set, used to build the operator-WIP subject as
+   * `wip(operator): changes captured before <agent>/<slug>`. When absent,
+   * falls back to `wip(operator): changes captured before <branch>`.
+   */
+  operatorWipContext?: { agent: string; slug: string };
 }
 
 export type IntegrateResult = RebaseAndResolveResult;
@@ -219,21 +225,8 @@ export type IntegrateResult = RebaseAndResolveResult;
  * worktree).
  */
 export async function integrateBranch(opts: IntegrateOptions): Promise<IntegrateResult> {
-  // Exclude the `.worktrees/` directory: worktrees live there by convention and
-  // are not operator dirty content. Real consumer repos gitignore `.worktrees/`;
-  // this pathspec exclusion covers repos (e.g. test fixtures) that do not.
-  const dirty = (
-    await $`git status --porcelain -- . ':!.worktrees'`.cwd(opts.repoRoot).quiet().nothrow()
-  ).stdout
-    .toString()
-    .trim();
-  if (dirty) {
-    return {
-      ok: false,
-      reason: `integrateBranch: repoRoot is dirty — commit or stash before integration. Consumers should reject dirty repos at their ensure-repo-clean step. Dirty paths:\n${dirty}`,
-      fixerIters: 0,
-    };
-  }
+  const wipResult = await commitDirtyRepoRoot(opts);
+  if (wipResult) return wipResult;
 
   const r = await rebaseAndResolve(opts);
   if (!r.ok) return r;
@@ -251,11 +244,7 @@ export async function integrateBranch(opts: IntegrateOptions): Promise<Integrate
     };
   }
 
-  const squashCommit =
-    await $`git -c user.name=munchkins -c user.email=munchkins@local commit -m ${fullMessage}`
-      .cwd(opts.repoRoot)
-      .nothrow()
-      .quiet();
+  const squashCommit = await munchkinsCommit(opts.repoRoot, fullMessage);
   if (squashCommit.exitCode !== 0) {
     return {
       ok: false,
@@ -288,6 +277,8 @@ export interface IntegrationContext {
   commitMessage?: string;
   /** Set by the summary writer when one ran — used as PR body. */
   markdownSummary?: string;
+  /** Threaded through to integrateBranch when the merge strategy commits operator-dirty content. */
+  operatorWipContext?: { agent: string; slug: string };
   log?: (line: string) => void;
   onFixerInvocation?: (info: {
     iter: number;
@@ -324,6 +315,7 @@ export function integrateMerge(): IntegrationStrategy {
         log: ctx.log,
         commitMessage: ctx.commitMessage,
         markdownSummary: ctx.markdownSummary,
+        operatorWipContext: ctx.operatorWipContext,
       });
     },
   };
@@ -466,6 +458,64 @@ async function createGitlabMR(
   return parseCreateResult("glab mr create", r);
 }
 
+/**
+ * If `repoRoot` has any dirty/staged/untracked content (excluding `.worktrees/`),
+ * stage all of it and commit it on `baseBranch` as a first-class WIP commit
+ * authored by the operator. Returns `undefined` when clean (caller proceeds with
+ * the rebase + squash-merge path unchanged) or on successful commit. Returns
+ * an `IntegrateResult` only on stage/commit failure.
+ *
+ * The WIP commit is a normal commit: operators recover via `git log` /
+ * `git commit --amend` / `git reset`; no synthetic prefix to grep for.
+ */
+async function commitDirtyRepoRoot(opts: IntegrateOptions): Promise<IntegrateResult | undefined> {
+  // Exclude the `.worktrees/` directory: worktrees live there by convention and
+  // are not operator dirty content. Real consumer repos gitignore `.worktrees/`;
+  // this pathspec exclusion covers repos (e.g. test fixtures) that do not.
+  const dirty = (
+    await $`git status --porcelain -- . ':!.worktrees'`.cwd(opts.repoRoot).quiet().nothrow()
+  ).stdout
+    .toString()
+    .trim();
+  if (!dirty) return undefined;
+
+  // `.worktrees/` is gitignored in real consumer repos; pass `:!.worktrees` as
+  // a pathspec exclusion only when it isn't already ignored. With both an exclude
+  // pathspec AND a gitignore entry, git treats `.worktrees` as "explicitly named
+  // but ignored" and fails the add. With neither, `git add -A` would slurp in
+  // sub-worktree directories as gitlinks. `git check-ignore` picks the right
+  // command for the operator's repo layout.
+  const worktreesIgnored =
+    (await $`git check-ignore .worktrees`.cwd(opts.repoRoot).nothrow().quiet()).exitCode === 0;
+  const addResult = worktreesIgnored
+    ? await $`git add -A`.cwd(opts.repoRoot).nothrow().quiet()
+    : await $`git add -A -- . ':!.worktrees'`.cwd(opts.repoRoot).nothrow().quiet();
+  if (addResult.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `pre-merge stage failed: ${addResult.stderr.toString().slice(-500)}`,
+      fixerIters: 0,
+    };
+  }
+
+  const ctx = opts.operatorWipContext;
+  const subject = ctx
+    ? `wip(operator): changes captured before ${ctx.agent}/${ctx.slug}`
+    : `wip(operator): changes captured before ${opts.branch}`;
+
+  const commitResult = await munchkinsCommit(opts.repoRoot, subject);
+  if (commitResult.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `operator-WIP commit failed: ${commitResult.stderr.toString().slice(-500)}`,
+      fixerIters: 0,
+    };
+  }
+
+  opts.log?.(`integrate: repoRoot was dirty; committed operator WIP — "${subject}"`);
+  return undefined;
+}
+
 async function listConflictedFiles(cwd: string): Promise<string[]> {
   const r = await $`git diff --name-only --diff-filter=U`.cwd(cwd).nothrow().quiet();
   return r
@@ -492,6 +542,16 @@ async function filesWithLeftoverMarkers(workdir: string): Promise<string[]> {
 
 async function abortRebase(cwd: string): Promise<void> {
   await $`git rebase --abort`.cwd(cwd).nothrow().quiet();
+}
+
+// Single source of truth for the operator identity stamped on both the squash
+// commit and the operator-WIP commit; keeps the long `-c user.name=…` config
+// out of caller code and the two commit call sites in lockstep.
+function munchkinsCommit(cwd: string, message: string) {
+  return $`git -c user.name=munchkins -c user.email=munchkins@local commit -m ${message}`
+    .cwd(cwd)
+    .nothrow()
+    .quiet();
 }
 
 function buildFixerUserPrompt(originalGoal: string, conflicted: string[]): string {
