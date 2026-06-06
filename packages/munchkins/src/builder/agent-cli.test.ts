@@ -440,3 +440,89 @@ describe("CodexCLI.buildArgs", () => {
     expect(args).toContain("gpt-5-codex");
   });
 });
+
+describe("CodexCLI rate-limit retry", () => {
+  type RunJsonStreamFn = (opts: unknown, args: string[], handle: unknown) => Promise<SpawnResult>;
+
+  function patchRunJsonStream(cli: CodexCLI, impl: RunJsonStreamFn): void {
+    (cli as unknown as { runJsonStream: RunJsonStreamFn }).runJsonStream = impl;
+  }
+
+  function makeOpts() {
+    return { systemPrompt: "", userPrompt: "u", cwd: "/tmp" };
+  }
+
+  test("retries once after fallback wait when output mentions 'rate limit'", async () => {
+    const cli = new CodexCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          exitCode: 1,
+          output: "Error: you have exceeded your rate limit, retry later",
+          durationMs: 10,
+        };
+      }
+      return { exitCode: 0, output: "post-retry", durationMs: 5 };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    // ~60s fallback wait; aborting mid-wait proves the retry path was entered
+    // on the Codex backend without requiring an actual 60-second sleep.
+    await expect(promise).rejects.toBeDefined();
+    expect(calls).toBe(1);
+  });
+
+  test("retries when 'rate limit' appears only in stderr", async () => {
+    const cli = new CodexCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: "",
+        stderr: "Rate Limit exceeded\n",
+        durationMs: 10,
+      };
+    });
+
+    const ac = new AbortController();
+    const promise = cli.spawn({ ...makeOpts(), abortSignal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    await expect(promise).rejects.toBeDefined();
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry when output contains no rate-limit phrase", async () => {
+    const cli = new CodexCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        output: "syntax error in prompt",
+        durationMs: 10,
+      };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(1);
+  });
+
+  test("does not retry on success (exitCode 0)", async () => {
+    const cli = new CodexCLI();
+    let calls = 0;
+    patchRunJsonStream(cli, async () => {
+      calls += 1;
+      return { exitCode: 0, output: "fine", durationMs: 5 };
+    });
+
+    const result = await cli.spawn(makeOpts());
+    expect(calls).toBe(1);
+    expect(result.exitCode).toBe(0);
+  });
+});

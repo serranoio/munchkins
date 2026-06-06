@@ -113,6 +113,29 @@ export abstract class AgentCLI {
     }
   }
 
+  // Runs the given args under `runJsonStream`, then detects rate-limit hits
+  // and retries once after sleeping until the parsed reset (or the generic
+  // fallback wait when only a non-timestamped "rate limit" substring matched).
+  // Shared by both backends — Claude-specific timestamp formats only fire on
+  // Claude output; Codex naturally degenerates to the generic fallback wait.
+  protected async runWithRateLimitRetry<E>(
+    opts: SpawnOptions,
+    args: string[],
+    handle: (event: E, ctx: StreamContext) => void,
+  ): Promise<SpawnResult> {
+    const result = await this.runJsonStream<E>(opts, args, handle);
+    if (!isLimitHit(result)) return result;
+    let resetAt = parseResetTimestamp(result);
+    if (!resetAt) {
+      const onlyGeneric = isGenericLimitOnly(result);
+      if (!onlyGeneric) return result;
+      resetAt = new Date(Date.now() + GENERIC_LIMIT_WAIT_MS);
+    }
+    process.stderr.write(`⏳ ${this.name} limit hit, waiting until ${formatLocalTime(resetAt)}\n`);
+    await sleepUntil(resetAt, opts.abortSignal);
+    return this.runJsonStream<E>(opts, args, handle);
+  }
+
   // Spawns `args`, decodes stdout as JSONL, and dispatches each parsed event to `handle`.
   // Subclasses only differ in arg shape and event handling — the spawn/decode/exit/error
   // scaffolding lives here.
@@ -340,23 +363,7 @@ export class ClaudeCLI extends AgentCLI {
       }
     };
 
-    const result = await this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
-    if (!isLimitHit(result)) return result;
-    // Prefer the explicit reset timestamp parsed from the "Claude AI usage
-    // limit reached|<unix>" / "...HH:MM" formats. When only the generic
-    // "rate limit" substring matched (no parseable timestamp available),
-    // fall back to a fixed wait. Skip retry if a specific timestamp format
-    // was used but failed to parse (e.g. HH:MM out of range) — that's the
-    // existing don't-retry semantics callers depend on.
-    let resetAt = parseResetTimestamp(result);
-    if (!resetAt) {
-      const onlyGeneric = isGenericLimitOnly(result);
-      if (!onlyGeneric) return result;
-      resetAt = new Date(Date.now() + GENERIC_LIMIT_WAIT_MS);
-    }
-    process.stderr.write(`⏳ Claude limit hit, waiting until ${formatLocalTime(resetAt)}\n`);
-    await sleepUntil(resetAt, opts.abortSignal);
-    return this.runJsonStream<ClaudeStreamEvent>(opts, args, handler);
+    return this.runWithRateLimitRetry<ClaudeStreamEvent>(opts, args, handler);
   }
 }
 
@@ -387,7 +394,7 @@ export class CodexCLI extends AgentCLI {
   }
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    return this.runJsonStream<CodexStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
+    return this.runWithRateLimitRetry<CodexStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
       const msg = event.msg;
       // session_id may appear at the top level or inside msg, depending on
       // Codex CLI version. Capture either form.

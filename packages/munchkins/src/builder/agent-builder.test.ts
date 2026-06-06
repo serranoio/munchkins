@@ -11,7 +11,7 @@ import {
   integratePR,
 } from "../integrate.js";
 import { gitWorktreeSandbox } from "../sandbox/sandbox.js";
-import { AgentBuilder, resolveBranchPrefix } from "./agent-builder.js";
+import { AgentBuilder, isSessionNotFound, resolveBranchPrefix } from "./agent-builder.js";
 import { Prompt } from "./prompt.js";
 
 const TEST_GIT_IDENTITY = {
@@ -414,4 +414,52 @@ describe("AgentBuilder.run integration dispatch end-to-end", () => {
     },
     E2E_TIMEOUT_MS,
   );
+});
+
+describe("isSessionNotFound", () => {
+  test("matches Claude-style 'session not found' in stdout", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "Error: session not found: abc" })).toBe(true);
+  });
+
+  test("matches 'session does not exist' phrasing", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "session xyz does not exist" })).toBe(true);
+  });
+
+  test("matches 'invalid session' phrasing", () => {
+    expect(isSessionNotFound({ exitCode: 2, output: "invalid session id" })).toBe(true);
+  });
+
+  test("matches Codex-style 'no such session' phrasing", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "no such session: abc-123" })).toBe(true);
+  });
+
+  test("matches 'unknown session' phrasing", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "", stderr: "unknown session id\n" })).toBe(
+      true,
+    );
+  });
+
+  test("matches 'session expired' phrasing", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "the session has expired" })).toBe(true);
+  });
+
+  test("scans stderr too (Codex writes CLI errors to stderr while stdout carries JSONL)", () => {
+    expect(
+      isSessionNotFound({ exitCode: 1, output: "", stderr: "error: session not found\n" }),
+    ).toBe(true);
+  });
+
+  test("returns false when exit code is 0 (success is never a session-not-found)", () => {
+    expect(isSessionNotFound({ exitCode: 0, output: "session not found" })).toBe(false);
+  });
+
+  test("returns false when neither output nor stderr matches", () => {
+    expect(
+      isSessionNotFound({ exitCode: 1, output: "some other error", stderr: "still other" }),
+    ).toBe(false);
+  });
+
+  test("returns false when stderr is undefined and output doesn't match", () => {
+    expect(isSessionNotFound({ exitCode: 1, output: "unrelated failure" })).toBe(false);
+  });
 });

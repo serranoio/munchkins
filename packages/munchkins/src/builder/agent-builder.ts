@@ -957,9 +957,18 @@ function isDryRunRequested(): boolean {
   return process.env.__MUNCHKINS_OPT_dryRun === "true";
 }
 
-function isSessionNotFound(r: { exitCode: number; output: string }): boolean {
+// Backend-agnostic: matches the wordings both Claude and Codex use when a
+// resumed session id is unknown or expired, scanning both stdout and stderr
+// because Codex emits structured events on stdout and writes plain-text CLI
+// errors to stderr.
+export function isSessionNotFound(r: {
+  exitCode: number;
+  output: string;
+  stderr?: string;
+}): boolean {
   if (r.exitCode === 0) return false;
-  return /session not found|session.*does not exist|invalid session/i.test(r.output);
+  const re = /session not found|session.*does not exist|invalid session|no such session|unknown session|session.*expired/i;
+  return re.test(r.output) || re.test(r.stderr ?? "");
 }
 
 async function buildWorktreeStatePreamble(cwd: string): Promise<string> {
