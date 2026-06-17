@@ -4,6 +4,31 @@ Autonomously-generated entries from agent runs. Most recent first.
 
 ---
 
+## refactor(builder): clarify slug retry locals (bdfa002)
+**2026-06-16 17:38 PDT · refactor · 150.0s · —**
+
+**Goal:** Review `packages/munchkins/src/builder/slug.ts` for small clarity improvements without changing behavior.
+
+**Outcome:** Renamed retry-loop locals in `packages/munchkins/src/builder/slug.ts` from terse names to `attemptIndex` and `result`. The staged diff also formats the session-not-found regex in `agent-builder.ts` and the Codex stream handler call in `agent-cli.ts` without behavior changes.
+
+**Refactor type:** other
+
+**Lines changed:**
+
+| File | Before | After | Δ |
+|------|--------|-------|---|
+| packages/munchkins/src/builder/agent-builder.ts | 986 | 987 | +1 |
+| packages/munchkins/src/builder/agent-cli.ts | 433 | 437 | +4 |
+| packages/munchkins/src/builder/slug.ts | 97 | 97 | 0 |
+
+**Total:** 1516 → 1521 (Δ +5)
+
+**Files changed:**
+- packages/munchkins/src/builder/agent-builder.ts
+- packages/munchkins/src/builder/agent-cli.ts
+- packages/munchkins/src/builder/slug.ts
+
+---
 ## feat(integrate): commit dirty repoRoot as operator WIP instead of hard-failing (484fcae)
 **2026-05-27 20:46 PDT · feat-small · 1292.6s · $11.2000**
 
