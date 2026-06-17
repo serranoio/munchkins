@@ -66,11 +66,11 @@ export async function getSlugWithRetry(
   const sleep = opts.sleep ?? ((ms: number) => Bun.sleep(ms));
   const cwd = opts.cwd ?? process.cwd();
   let lastError: string | undefined;
-  for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
-    const delay = RETRY_DELAYS_MS[i];
+  for (let attemptIndex = 0; attemptIndex < RETRY_DELAYS_MS.length; attemptIndex++) {
+    const delay = RETRY_DELAYS_MS[attemptIndex];
     if (delay > 0) await sleep(delay);
     try {
-      const r = await spawn({
+      const result = await spawn({
         systemPrompt: SLUG_SYSTEM_PROMPT,
         userPrompt: userMessage,
         cwd,
@@ -78,11 +78,11 @@ export async function getSlugWithRetry(
         disallowedTools: ["*"],
         abortSignal: AbortSignal.timeout(SLUG_TIMEOUT_MS),
       });
-      if (r.exitCode !== 0) {
-        lastError = `exit ${r.exitCode}`;
+      if (result.exitCode !== 0) {
+        lastError = `exit ${result.exitCode}`;
         continue;
       }
-      const cleaned = sanitize(r.output);
+      const cleaned = sanitize(result.output);
       if (cleaned) return { slug: cleaned };
       lastError = "empty slug";
     } catch (err) {
