@@ -60,6 +60,13 @@ interface ClaudeStreamEvent {
   };
 }
 
+interface CodexTokenUsage {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+  reasoning_output_tokens?: number;
+}
+
 interface CodexStreamEventMsg {
   type?: string;
   message?: string;
@@ -69,23 +76,30 @@ interface CodexStreamEventMsg {
   last_agent_message?: string;
   session_id?: string;
   info?: {
-    total_token_usage?: {
-      input_tokens?: number;
-      cached_input_tokens?: number;
-      output_tokens?: number;
-    };
-    last_token_usage?: {
-      input_tokens?: number;
-      cached_input_tokens?: number;
-      output_tokens?: number;
-    };
+    total_token_usage?: CodexTokenUsage;
+    last_token_usage?: CodexTokenUsage;
   };
+}
+
+interface CodexStreamEventItem {
+  id?: string;
+  type?: string;
+  text?: string;
+  delta?: string;
+  name?: string;
 }
 
 interface CodexStreamEvent {
   id?: string;
   session_id?: string;
+  // Older codex versions nest event data under `msg`.
   msg?: CodexStreamEventMsg;
+  // Codex 0.139+ emits a flat event shape with top-level `type` plus
+  // `thread_id` / `item` / `usage` siblings depending on the event kind.
+  type?: string;
+  thread_id?: string;
+  item?: CodexStreamEventItem;
+  usage?: CodexTokenUsage;
 }
 
 interface StreamContext {
@@ -378,14 +392,14 @@ export class CodexCLI extends AgentCLI {
     const fullPrompt = opts.systemPrompt
       ? `## System\n${opts.systemPrompt}\n\n## Task\n${promptText}`
       : promptText;
-    // `codex resume <session-id> exec ...` is the resume form; `codex exec ...` is the
-    // fresh form. The exact resume flag shape is verified at runtime — if Codex
-    // changes it, the fallback path in agent-builder restarts the step from scratch.
-    const args: string[] = ["codex"];
+    // Codex 0.139+: `codex exec resume <session-id> ...` is the non-interactive
+    // resume form (top-level `codex resume` is the interactive picker, which
+    // would treat `exec` as a prompt). Fresh runs use `codex exec ...`.
+    const args: string[] = ["codex", "exec"];
     if (opts.resumeSessionId) {
       args.push("resume", opts.resumeSessionId);
     }
-    args.push("exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "-C", opts.cwd);
+    args.push("--json", "--dangerously-bypass-approvals-and-sandbox", "-C", opts.cwd);
     if (opts.model) {
       args.push("--model", opts.model);
     }
@@ -394,40 +408,67 @@ export class CodexCLI extends AgentCLI {
   }
 
   async spawn(opts: SpawnOptions): Promise<SpawnResult> {
-    return this.runWithRateLimitRetry<CodexStreamEvent>(opts, this.buildArgs(opts), (event, ctx) => {
-      const msg = event.msg;
-      // session_id may appear at the top level or inside msg, depending on
-      // Codex CLI version. Capture either form.
-      const sid = event.session_id ?? msg?.session_id;
-      if (sid) ctx.setSessionId(sid);
-      if (!msg) return;
+    return this.runWithRateLimitRetry<CodexStreamEvent>(
+      opts,
+      this.buildArgs(opts),
+      (event, ctx) => {
+        // Codex emits two event shapes depending on CLI version:
+        //   - Older: nested under `msg` with `session_id` either at top level or in `msg`.
+        //   - 0.139+: flat with top-level `type` and shape-specific siblings
+        //     (`thread.started.thread_id`, `item.completed.item`, `turn.completed.usage`).
+        // We handle both so a parser update doesn't require lockstep CLI upgrades.
 
-      if (msg.type === "agent_message" && typeof msg.message === "string") {
-        ctx.setFinalResult(msg.message);
-      } else if (msg.type === "task_complete" && typeof msg.last_agent_message === "string") {
-        ctx.setFinalResult(msg.last_agent_message);
-      } else if (msg.type === "token_count" && msg.info) {
-        const totals = msg.info.total_token_usage ?? msg.info.last_token_usage;
-        if (totals) {
-          ctx.setUsage({
-            inputTokens: totals.input_tokens ?? 0,
-            outputTokens: totals.output_tokens ?? 0,
-            cacheCreationInputTokens: 0,
-            cacheReadInputTokens: totals.cached_input_tokens ?? 0,
-            // costUsd intentionally omitted — Codex JSONL does not emit cost.
-          });
+        const sid = event.session_id ?? event.msg?.session_id ?? event.thread_id;
+        if (sid) ctx.setSessionId(sid);
+
+        // Flat (0.139+) shape.
+        if (event.type === "item.completed" && event.item?.type === "agent_message") {
+          if (typeof event.item.text === "string") {
+            ctx.setFinalResult(event.item.text);
+            if (opts.stream) process.stdout.write(`\n${event.item.text}\n`);
+          }
+        } else if (event.type === "turn.completed" && event.usage) {
+          ctx.setUsage(mapCodexUsage(event.usage));
+        } else if (opts.stream && event.type === "item.started" && event.item?.name) {
+          process.stdout.write(`\n[Tool: ${event.item.name}]\n`);
         }
-      }
 
-      if (!opts.stream) return;
-
-      if (msg.type === "agent_message" && typeof msg.message === "string") {
-        process.stdout.write(`\n${msg.message}\n`);
-      } else if (msg.type === "agent_message_delta" && typeof msg.delta === "string") {
-        process.stdout.write(msg.delta);
-      } else if (msg.type === "exec_command_begin" && typeof msg.name === "string") {
-        process.stdout.write(`\n[Tool: ${msg.name}]\n`);
-      }
-    });
+        // Older nested-msg shape.
+        const msg = event.msg;
+        if (msg) {
+          if (msg.type === "agent_message" && typeof msg.message === "string") {
+            ctx.setFinalResult(msg.message);
+            if (opts.stream) process.stdout.write(`\n${msg.message}\n`);
+          } else if (msg.type === "task_complete" && typeof msg.last_agent_message === "string") {
+            ctx.setFinalResult(msg.last_agent_message);
+          } else if (msg.type === "token_count" && msg.info) {
+            const totals = msg.info.total_token_usage ?? msg.info.last_token_usage;
+            if (totals) ctx.setUsage(mapCodexUsage(totals));
+          } else if (
+            opts.stream &&
+            msg.type === "agent_message_delta" &&
+            typeof msg.delta === "string"
+          ) {
+            process.stdout.write(msg.delta);
+          } else if (
+            opts.stream &&
+            msg.type === "exec_command_begin" &&
+            typeof msg.name === "string"
+          ) {
+            process.stdout.write(`\n[Tool: ${msg.name}]\n`);
+          }
+        }
+      },
+    );
   }
+}
+
+function mapCodexUsage(u: CodexTokenUsage): AgentUsage {
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: u.cached_input_tokens ?? 0,
+    // costUsd intentionally omitted — Codex JSONL does not emit cost.
+  };
 }

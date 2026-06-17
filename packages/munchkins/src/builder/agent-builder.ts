@@ -967,7 +967,8 @@ export function isSessionNotFound(r: {
   stderr?: string;
 }): boolean {
   if (r.exitCode === 0) return false;
-  const re = /session not found|session.*does not exist|invalid session|no such session|unknown session|session.*expired/i;
+  const re =
+    /session not found|session.*does not exist|invalid session|no such session|unknown session|session.*expired/i;
   return re.test(r.output) || re.test(r.stderr ?? "");
 }
 

@@ -130,7 +130,7 @@ describe("ClaudeCLI resume mechanics", () => {
 });
 
 describe("CodexCLI resume mechanics", () => {
-  test("prepends 'resume <id>' before exec and uses the continue message", () => {
+  test("uses 'codex exec resume <id>' (the non-interactive resume form) and the continue message", () => {
     const args = new CodexCLI().buildArgs({
       systemPrompt: "SYS",
       userPrompt: "ORIGINAL USER",
@@ -138,15 +138,15 @@ describe("CodexCLI resume mechanics", () => {
       resumeSessionId: "xyz-789",
     });
     expect(args[0]).toBe("codex");
-    expect(args[1]).toBe("resume");
-    expect(args[2]).toBe("xyz-789");
-    expect(args[3]).toBe("exec");
+    expect(args[1]).toBe("exec");
+    expect(args[2]).toBe("resume");
+    expect(args[3]).toBe("xyz-789");
     // The composed prompt embeds the continue message, not the original.
     expect(args[args.length - 1]).toMatch(/Continue from where you left off/);
     expect(args[args.length - 1]).not.toMatch(/ORIGINAL USER/);
   });
 
-  test("does NOT prepend 'resume' when resumeSessionId is absent (regression lock)", () => {
+  test("does NOT include 'resume' when resumeSessionId is absent (regression lock)", () => {
     const args = new CodexCLI().buildArgs({
       systemPrompt: "SYS",
       userPrompt: "ORIGINAL USER",
@@ -438,6 +438,102 @@ describe("CodexCLI.buildArgs", () => {
     });
     expect(args).toContain("--model");
     expect(args).toContain("gpt-5-codex");
+  });
+});
+
+describe("CodexCLI JSONL stream parsing", () => {
+  type RunJsonStreamFn = (opts: unknown, args: string[], handle: unknown) => Promise<SpawnResult>;
+  type Handler = (
+    event: unknown,
+    ctx: {
+      setFinalResult: (s: string) => void;
+      setUsage: (u: unknown) => void;
+      setSessionId: (s: string) => void;
+    },
+  ) => void;
+
+  // Drives the handler the way `runJsonStream` does in production: parse JSONL
+  // line by line and dispatch each event. Then call `CodexCLI.spawn` with a
+  // patched `runJsonStream` so the parser path the handler lives in actually runs.
+  function runHandlerAgainstStream(jsonl: string): {
+    sessionId: string | undefined;
+    finalResult: string;
+    usage: unknown;
+  } {
+    let sessionId: string | undefined;
+    let finalResult = "";
+    let usage: unknown;
+    const ctx = {
+      setFinalResult: (s: string) => {
+        finalResult = s;
+      },
+      setUsage: (u: unknown) => {
+        usage = u;
+      },
+      setSessionId: (s: string) => {
+        sessionId = s;
+      },
+    };
+
+    let captured: Handler | undefined;
+    const cli = new CodexCLI();
+    (cli as unknown as { runJsonStream: RunJsonStreamFn }).runJsonStream = async (_o, _a, h) => {
+      captured = h as Handler;
+      return { exitCode: 0, output: "", durationMs: 1 };
+    };
+    // Trigger spawn so CodexCLI registers its handler with runJsonStream.
+    void cli.spawn({ systemPrompt: "", userPrompt: "u", cwd: "/tmp" });
+
+    if (!captured) throw new Error("handler not captured");
+    for (const line of jsonl.split("\n")) {
+      if (!line.trim()) continue;
+      captured(JSON.parse(line), ctx);
+    }
+    return { sessionId, finalResult, usage };
+  }
+
+  test("parses codex 0.139 flat-event stream (thread.started + item.completed + turn.completed)", () => {
+    const stream = [
+      `{"type":"thread.started","thread_id":"019ecde2-68a2-7d20-b5e4-8029d5dc149e"}`,
+      `{"type":"turn.started"}`,
+      `{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"codex-ok"}}`,
+      `{"type":"turn.completed","usage":{"input_tokens":17376,"cached_input_tokens":9600,"output_tokens":7,"reasoning_output_tokens":0}}`,
+    ].join("\n");
+
+    const { sessionId, finalResult, usage } = runHandlerAgainstStream(stream);
+    expect(sessionId).toBe("019ecde2-68a2-7d20-b5e4-8029d5dc149e");
+    expect(finalResult).toBe("codex-ok");
+    expect(usage).toEqual({
+      inputTokens: 17376,
+      outputTokens: 7,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 9600,
+    });
+  });
+
+  test("parses older codex nested-msg stream (session_id + agent_message + token_count)", () => {
+    const stream = [
+      `{"session_id":"abc-123","msg":{"type":"session_configured"}}`,
+      `{"msg":{"type":"agent_message","message":"old-shape-ok"}}`,
+      `{"msg":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":20}}}}`,
+    ].join("\n");
+
+    const { sessionId, finalResult, usage } = runHandlerAgainstStream(stream);
+    expect(sessionId).toBe("abc-123");
+    expect(finalResult).toBe("old-shape-ok");
+    expect(usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 50,
+    });
+  });
+
+  test("does not emit costUsd (Codex JSONL never reports cost)", () => {
+    const stream = `{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1,"cached_input_tokens":0}}`;
+    const { usage } = runHandlerAgainstStream(stream);
+    expect(usage).toBeDefined();
+    expect((usage as { costUsd?: number }).costUsd).toBeUndefined();
   });
 });
 
