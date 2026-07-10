@@ -208,7 +208,7 @@ export abstract class AgentCLI {
         for await (const chunk of proc.stderr) {
           const text = dec.decode(chunk);
           stderrChunks.push(text);
-          process.stderr.write(text);
+          process.stderr.write(filterForwardedStderr(text));
         }
       })();
 
@@ -251,6 +251,13 @@ export abstract class AgentCLI {
       };
     }
   }
+}
+
+function filterForwardedStderr(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^Reading (additional input|prompt) from stdin\.\.\.$/.test(line.trim()))
+    .join("\n");
 }
 
 const LIMIT_RE_UNIX = /Claude AI usage limit reached\|(\d{10,})/;
