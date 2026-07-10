@@ -537,6 +537,47 @@ describe("CodexCLI JSONL stream parsing", () => {
   });
 });
 
+describe("AgentCLI subprocess stdin handling", () => {
+  class TestCLI extends AgentCLI {
+    readonly name = "codex" as const;
+
+    async spawn(): Promise<SpawnResult> {
+      return this.runJsonStream(
+        { systemPrompt: "", userPrompt: "u", cwd: "/tmp/munchkins-test" },
+        ["codex", "exec", "--json", "prompt"],
+        () => {},
+      );
+    }
+  }
+
+  test("ignores parent stdin when spawning model CLIs", async () => {
+    const originalSpawn = Bun.spawn;
+    let capturedOptions: { stdin?: unknown } | undefined;
+    const emptyBody = (): ReadableStream<Uint8Array> => {
+      const body = new Response("").body;
+      if (!body) throw new Error("expected response body");
+      return body;
+    };
+
+    Bun.spawn = ((_args: string[], options: { stdin?: unknown }) => {
+      capturedOptions = options;
+      return {
+        stdout: emptyBody(),
+        stderr: emptyBody(),
+        exited: Promise.resolve(0),
+      };
+    }) as typeof Bun.spawn;
+
+    try {
+      await new TestCLI().spawn();
+    } finally {
+      Bun.spawn = originalSpawn;
+    }
+
+    expect(capturedOptions?.stdin).toBe("ignore");
+  });
+});
+
 describe("CodexCLI rate-limit retry", () => {
   type RunJsonStreamFn = (opts: unknown, args: string[], handle: unknown) => Promise<SpawnResult>;
 

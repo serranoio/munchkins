@@ -167,6 +167,7 @@ export abstract class AgentCLI {
     try {
       const proc = Bun.spawn(args, {
         cwd: opts.cwd,
+        stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
         signal: opts.abortSignal,
