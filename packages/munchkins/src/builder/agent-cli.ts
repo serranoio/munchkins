@@ -136,8 +136,9 @@ export abstract class AgentCLI {
     opts: SpawnOptions,
     args: string[],
     handle: (event: E, ctx: StreamContext) => void,
+    stdinText?: string,
   ): Promise<SpawnResult> {
-    const result = await this.runJsonStream<E>(opts, args, handle);
+    const result = await this.runJsonStream<E>(opts, args, handle, stdinText);
     if (!isLimitHit(result)) return result;
     let resetAt = parseResetTimestamp(result);
     if (!resetAt) {
@@ -147,7 +148,7 @@ export abstract class AgentCLI {
     }
     process.stderr.write(`⏳ ${this.name} limit hit, waiting until ${formatLocalTime(resetAt)}\n`);
     await sleepUntil(resetAt, opts.abortSignal);
-    return this.runJsonStream<E>(opts, args, handle);
+    return this.runJsonStream<E>(opts, args, handle, stdinText);
   }
 
   // Spawns `args`, decodes stdout as JSONL, and dispatches each parsed event to `handle`.
@@ -157,6 +158,7 @@ export abstract class AgentCLI {
     opts: SpawnOptions,
     args: string[],
     handle: (event: E, ctx: StreamContext) => void,
+    stdinText?: string,
   ): Promise<SpawnResult> {
     const startTime = Date.now();
     let usage: AgentUsage | undefined;
@@ -167,11 +169,20 @@ export abstract class AgentCLI {
     try {
       const proc = Bun.spawn(args, {
         cwd: opts.cwd,
-        stdin: "ignore",
+        stdin: stdinText === undefined ? "ignore" : "pipe",
         stdout: "pipe",
         stderr: "pipe",
         signal: opts.abortSignal,
       });
+
+      if (stdinText !== undefined) {
+        const stdin = proc.stdin as unknown as {
+          write(data: string): void;
+          end(): void;
+        };
+        stdin.write(stdinText);
+        stdin.end();
+      }
 
       const decoder = new TextDecoder();
       const ctx: StreamContext = {
@@ -385,14 +396,17 @@ export class ClaudeCLI extends AgentCLI {
 export class CodexCLI extends AgentCLI {
   readonly name = "codex" as const;
 
-  buildArgs(opts: SpawnOptions): string[] {
+  buildPrompt(opts: SpawnOptions): string {
     // Codex `exec` has no --system-prompt flag. Prepending the system prompt to the
     // user prompt under labeled sections is the lowest-coupling delivery: no config
     // override, no AGENTS.md collision (this repo's AGENTS.md is load-bearing).
     const promptText = opts.resumeSessionId ? RESUME_CONTINUE_MESSAGE : opts.userPrompt;
-    const fullPrompt = opts.systemPrompt
+    return opts.systemPrompt
       ? `## System\n${opts.systemPrompt}\n\n## Task\n${promptText}`
       : promptText;
+  }
+
+  buildArgs(opts: SpawnOptions): string[] {
     // Codex 0.139+: `codex exec resume <session-id> ...` is the non-interactive
     // resume form (top-level `codex resume` is the interactive picker, which
     // would treat `exec` as a prompt). Fresh runs use `codex exec ...`.
@@ -404,7 +418,6 @@ export class CodexCLI extends AgentCLI {
     if (opts.model) {
       args.push("--model", opts.model);
     }
-    args.push(fullPrompt);
     return args;
   }
 
@@ -460,6 +473,7 @@ export class CodexCLI extends AgentCLI {
           }
         }
       },
+      this.buildPrompt(opts),
     );
   }
 }

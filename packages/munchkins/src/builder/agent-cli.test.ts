@@ -131,19 +131,22 @@ describe("ClaudeCLI resume mechanics", () => {
 
 describe("CodexCLI resume mechanics", () => {
   test("uses 'codex exec resume <id>' (the non-interactive resume form) and the continue message", () => {
-    const args = new CodexCLI().buildArgs({
+    const cli = new CodexCLI();
+    const opts = {
       systemPrompt: "SYS",
       userPrompt: "ORIGINAL USER",
       cwd: "/tmp",
       resumeSessionId: "xyz-789",
-    });
+    };
+    const args = cli.buildArgs(opts);
     expect(args[0]).toBe("codex");
     expect(args[1]).toBe("exec");
     expect(args[2]).toBe("resume");
     expect(args[3]).toBe("xyz-789");
-    // The composed prompt embeds the continue message, not the original.
-    expect(args[args.length - 1]).toMatch(/Continue from where you left off/);
-    expect(args[args.length - 1]).not.toMatch(/ORIGINAL USER/);
+    expect(args).not.toContain("ORIGINAL USER");
+    // The composed prompt is supplied through stdin, not argv.
+    expect(cli.buildPrompt(opts)).toMatch(/Continue from where you left off/);
+    expect(cli.buildPrompt(opts)).not.toMatch(/ORIGINAL USER/);
   });
 
   test("does NOT include 'resume' when resumeSessionId is absent (regression lock)", () => {
@@ -405,28 +408,32 @@ describe("ClaudeCLI rate-limit retry", () => {
 
 describe("CodexCLI.buildArgs", () => {
   test("prepends system prompt under labeled sections and includes the bypass flag", () => {
-    const args = new CodexCLI().buildArgs({
+    const cli = new CodexCLI();
+    const opts = {
       systemPrompt: "SYS",
       userPrompt: "USER",
       cwd: "/tmp",
-    });
+    };
+    const args = cli.buildArgs(opts);
     expect(args[0]).toBe("codex");
     expect(args[1]).toBe("exec");
     expect(args).toContain("--json");
     expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args).toContain("-C");
     expect(args).toContain("/tmp");
-    // The composed prompt is the final positional argument.
-    expect(args[args.length - 1]).toBe("## System\nSYS\n\n## Task\nUSER");
+    expect(args).not.toContain("USER");
+    expect(cli.buildPrompt(opts)).toBe("## System\nSYS\n\n## Task\nUSER");
   });
 
   test("falls back to plain user prompt when systemPrompt is empty", () => {
-    const args = new CodexCLI().buildArgs({
+    const cli = new CodexCLI();
+    const opts = {
       systemPrompt: "",
       userPrompt: "USER",
       cwd: "/tmp",
-    });
-    expect(args[args.length - 1]).toBe("USER");
+    };
+    expect(cli.buildArgs(opts)).not.toContain("USER");
+    expect(cli.buildPrompt(opts)).toBe("USER");
   });
 
   test("includes --model when provided", () => {
@@ -575,6 +582,34 @@ describe("AgentCLI subprocess stdin handling", () => {
     }
 
     expect(capturedOptions?.stdin).toBe("ignore");
+  });
+
+  test("passes Codex prompts through stdin instead of argv", async () => {
+    type RunJsonStreamFn = (
+      opts: unknown,
+      args: string[],
+      handle: unknown,
+      stdinText?: string,
+    ) => Promise<SpawnResult>;
+
+    const cli = new CodexCLI();
+    let capturedArgs: string[] = [];
+    let capturedStdin: string | undefined;
+    (cli as unknown as { runJsonStream: RunJsonStreamFn }).runJsonStream = async (
+      _opts,
+      args,
+      _handle,
+      stdinText,
+    ) => {
+      capturedArgs = args;
+      capturedStdin = stdinText;
+      return { exitCode: 0, output: "ok", durationMs: 1 };
+    };
+
+    await cli.spawn({ systemPrompt: "SYS", userPrompt: "USER", cwd: "/tmp" });
+
+    expect(capturedArgs).not.toContain("USER");
+    expect(capturedStdin).toBe("## System\nSYS\n\n## Task\nUSER");
   });
 });
 
